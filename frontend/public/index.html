@@ -113,6 +113,26 @@
             margin-top: 12px;
             min-height: 18px;
         }
+
+        /* ===== Alerta de som ===== */
+        .alerta-som {
+            display: none;
+            margin: 15px 0;
+            padding: 14px 18px;
+            background: rgba(244, 67, 54, 0.15);
+            border: 1px solid #f44336;
+            border-left: 5px solid #f44336;
+            border-radius: 10px;
+            color: #ffb4ab;
+            font-weight: 600;
+            font-size: 15px;
+            animation: piscar 1.2s infinite;
+        }
+        .alerta-som.ativo { display: block; }
+        @keyframes piscar {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.55; }
+        }
     </style>
 </head>
 <body>
@@ -140,6 +160,8 @@
             </div>
         </header>
 
+        <div class="alerta-som" id="alertaSom">🔔 Som alto detectado no quarto!</div>
+
         <div class="cards">
             <div class="card">
                 <div class="icon">🌡️</div>
@@ -150,6 +172,11 @@
                 <div class="icon">💧</div>
                 <div class="label">Umidade</div>
                 <div class="value"><span id="umid">--</span><span class="unit">%</span></div>
+            </div>
+            <div class="card">
+                <div class="icon">🔊</div>
+                <div class="label">Som</div>
+                <div class="value" style="font-size: 30px;"><span id="som">--</span></div>
             </div>
             <div class="card">
                 <div class="icon">📍</div>
@@ -174,6 +201,7 @@
         // ========================================
         const API_URL = 'https://home-monitor-backend.onrender.com/api';
         const INTERVALO_ATUALIZACAO = 10000; // 10 segundos
+        const SOM_LIMITE_ALERTA = 300; // limite para alerta de som (mesmo do ESP32)
 
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
@@ -222,6 +250,16 @@
                 document.getElementById('temp').textContent = dados.temperatura.toFixed(1);
                 document.getElementById('umid').textContent = dados.umidade.toFixed(1);
 
+                // Mostra o nível de som e aciona o alerta se alto
+                const nivelSom = dados.som !== undefined ? dados.som : 0;
+                document.getElementById('som').textContent = nivelSom;
+                const alertaEl = document.getElementById('alertaSom');
+                if (nivelSom > SOM_LIMITE_ALERTA) {
+                    alertaEl.classList.add('ativo');
+                } else {
+                    alertaEl.classList.remove('ativo');
+                }
+
                 const atualizado = formatarData(dados.criado_em);
                 updateInfo.textContent = `Última atualização: ${atualizado}`;
 
@@ -256,6 +294,8 @@
                 const labels = ordenado.map(d => formatarData(d.criado_em));
                 const temperaturas = ordenado.map(d => d.temperatura);
                 const umidades = ordenado.map(d => d.umidade);
+                const sons = ordenado.map(d => d.som !== undefined ? d.som : 0);
+                const limitesSom = ordenado.map(() => SOM_LIMITE_ALERTA);
 
                 if (chart) {
                     chart.destroy();
@@ -282,6 +322,23 @@
                                 backgroundColor: 'rgba(54,162,235,0.1)',
                                 yAxisID: 'yUmid',
                                 tension: 0.3
+                            },
+                            {
+                                label: 'Som',
+                                data: sons,
+                                borderColor: '#ffce56',
+                                backgroundColor: 'rgba(255,206,86,0.15)',
+                                yAxisID: 'ySom',
+                                tension: 0.3
+                            },
+                            {
+                                label: 'Limite som',
+                                data: limitesSom,
+                                borderColor: 'rgba(255,206,86,0.4)',
+                                borderDash: [5, 5],
+                                pointRadius: 0,
+                                borderWidth: 1,
+                                yAxisID: 'ySom'
                             }
                         ]
                     },
@@ -311,6 +368,13 @@
                                 max: 100,
                                 title: { display: true, text: '%', color: '#36a2eb' },
                                 ticks: { color: '#36a2eb' },
+                                grid: { drawOnChartArea: false }
+                            },
+                            ySom: {
+                                type: 'linear',
+                                position: 'right',
+                                title: { display: true, text: 'Som', color: '#ffce56' },
+                                ticks: { color: '#ffce56' },
                                 grid: { drawOnChartArea: false }
                             }
                         }

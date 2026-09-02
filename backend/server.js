@@ -92,7 +92,7 @@ app.post('/api/login', (req, res) => {
 // POST /api/temperatura
 // ========================================
 app.post('/api/temperatura', autenticar, async (req, res) => {
-  const { temperatura, umidade } = req.body;
+  const { temperatura, umidade, som } = req.body;
 
   if (temperatura === undefined || umidade === undefined) {
     return res.status(400).json({ erro: 'Campos temperatura e umidade são obrigatórios' });
@@ -105,6 +105,7 @@ app.post('/api/temperatura', autenticar, async (req, res) => {
         {
           temperatura: parseFloat(temperatura),
           umidade: parseFloat(umidade),
+          som: som !== undefined ? parseInt(som) : 0,
           local: 'quarto',
           criado_em: new Date().toISOString()
         }

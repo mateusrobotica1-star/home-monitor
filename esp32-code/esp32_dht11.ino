@@ -28,7 +28,31 @@ const char* API_KEY = "sua_chave_secreta_aqui";
 #define DHTPIN 4
 #define DHTTYPE DHT11
 
+// Pin do sensor de som KY-037 (saída analógica AOUT/DO)
+// Conecte o pino AOUT/DO do módulo em um pino ADC válido do ESP32-S3
+// GPIO1 e GPIO2 são pinos ADC1. Se preferir outro, use GPIO3, GPIO5, GPIO18 etc.
+#define SOM_PIN 1
+
+// Limite de alerta de som (ajuste conforme sua sensibilidade)
+// Valores tipicos: silencio ~10-50, barulho alto ~200-1000+
+#define SOM_LIMITE_ALERTA 300
+
 DHT dht(DHTPIN, DHTTYPE);
+
+// Função para medir o nível de som (0-4095)
+int lerNivelSom() {
+  int maxLeitura = 0;
+  // Amostra por 50ms para capturar picos de som
+  unsigned long fim = millis() + 50;
+  while (millis() < fim) {
+    int v = analogRead(SOM_PIN);
+    if (v > maxLeitura) {
+      maxLeitura = v;
+    }
+    delay(1);
+  }
+  return maxLeitura;
+}
 
 // Intervalo de envio em segundos (60 = 1 minuto)
 const unsigned long ENVIO_INTERVALO = 60;
@@ -146,9 +170,17 @@ void lerEEnviar() {
 
   Serial.printf("Temperatura: %.1f C | Umidade: %.1f%%\n", temperatura, umidade);
 
-  // Monta o JSON a ser enviado
+  // Lê o nível de som do KY-037
+  int nivelSom = lerNivelSom();
+  Serial.printf("Nivel de som: %d (limite de alerta: %d)\n", nivelSom, SOM_LIMITE_ALERTA);
+  if (nivelSom > SOM_LIMITE_ALERTA) {
+    Serial.println(">> ALERTA: som alto detectado!");
+  }
+
+  // Monta o JSON a ser enviado (incluindo o nível de som)
   String json = "{\"temperatura\":" + String(temperatura, 1) +
-                ",\"umidade\":" + String(umidade, 1) + "}";
+                ",\"umidade\":" + String(umidade, 1) +
+                ",\"som\":" + String(nivelSom) + "}";
   Serial.print("JSON enviado: ");
   Serial.println(json);
 

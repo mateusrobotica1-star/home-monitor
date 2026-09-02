@@ -129,6 +129,14 @@
         async function buscarAtual() {
             try {
                 const res = await fetch(`${API_URL}/temperatura/atual`);
+                if (res.status === 404) {
+                    // Nenhuma leitura ainda - aguardando o sensor
+                    document.getElementById('temp').textContent = '--';
+                    document.getElementById('umid').textContent = '--';
+                    updateInfo.textContent = 'Aguardando dados do sensor...';
+                    atualizarStatus(false, 'Aguardando dados');
+                    return;
+                }
                 if (!res.ok) throw new Error('Erro na API');
                 const dados = await res.json();
 

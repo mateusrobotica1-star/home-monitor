@@ -145,14 +145,19 @@
 
                 const atualizado = formatarData(dados.criado_em);
                 updateInfo.textContent = `Última atualização: ${atualizado}`;
-                atualizarStatus(true, 'Online');
 
-                // Verifica se os dados são recentes (menos de 5 min)
+                // Verifica se o módulo está ativo (envia a cada 1 min)
+                // Se passou mais de 3 minutos, considera o módulo desligado
                 const agora = new Date();
                 const ultima = new Date(dados.criado_em);
                 const diffMin = (agora - ultima) / 60000;
-                if (diffMin > 5) {
-                    atualizarStatus(false, 'Offline (dados antigos)');
+
+                if (diffMin <= 3) {
+                    atualizarStatus(true, 'Módulo online');
+                } else if (diffMin <= 10) {
+                    atualizarStatus(false, 'Módulo desligado'); // parou de enviar há pouco
+                } else {
+                    atualizarStatus(false, 'Módulo desligado há muito tempo');
                 }
 
             } catch (error) {

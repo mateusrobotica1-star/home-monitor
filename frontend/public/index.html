@@ -55,15 +55,88 @@
         .loading { text-align: center; padding: 40px; color: #aaa; }
         .error { text-align: center; padding: 40px; color: #f44336; }
         footer { text-align: center; margin-top: 40px; color: #666; font-size: 12px; }
+
+        /* ===== Tela de Login ===== */
+        #telaLogin {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        #telaLogin.visivel { display: flex; }
+        .login-box {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 16px;
+            padding: 40px 35px;
+            width: 100%;
+            max-width: 340px;
+            backdrop-filter: blur(10px);
+            text-align: center;
+        }
+        .login-box h2 { margin-bottom: 5px; font-size: 22px; }
+        .login-box .sub { color: #aaa; font-size: 13px; margin-bottom: 25px; }
+        .login-box input {
+            width: 100%;
+            padding: 12px 14px;
+            margin: 8px 0;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            font-size: 15px;
+            outline: none;
+        }
+        .login-box input::placeholder { color: #888; }
+        .login-box input:focus { border-color: #7c6ce0; }
+        .login-box button {
+            width: 100%;
+            padding: 13px;
+            margin-top: 15px;
+            border: none;
+            border-radius: 8px;
+            background: #7c6ce0;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .login-box button:hover { background: #6b5cd6; }
+        .login-error {
+            color: #ff6b6b;
+            font-size: 13px;
+            margin-top: 12px;
+            min-height: 18px;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <!-- Tela de Login -->
+    <div id="telaLogin">
+        <div class="login-box">
+            <h2>🏠 Monitor da Casa</h2>
+            <div class="sub">Entre para acessar o painel</div>
+            <form id="formLogin" autocomplete="off">
+                <input type="text" id="loginUser" placeholder="Usuário">
+                <input type="password" id="loginPass" placeholder="Senha">
+                <button type="submit">Entrar</button>
+            </form>
+            <div class="login-error" id="loginError"></div>
+        </div>
+    </div>
+
+    <div class="container" id="dashboard">
         <header>
             <h1>🏠 Monitor da Casa</h1>
             <div>
                 <span class="status-dot" id="statusDot"></span>
                 <span class="status-text" id="statusText">Verificando...</span>
+                <button id="btnSair" style="margin-left:15px;background:transparent;border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;">Sair</button>
             </div>
         </header>
 
@@ -243,8 +316,10 @@
             }
         }
 
-        // Inicia a aplicação
+        // Inicia a aplicação (dashboard)
         function iniciar() {
+            document.getElementById('telaLogin').classList.remove('visivel');
+            document.getElementById('dashboard').style.display = 'block';
             atualizarStatus(true, 'Conectando...');
             buscarAtual();
             buscarHistorico();
@@ -252,7 +327,44 @@
             setInterval(buscarHistorico, INTERVALO_ATUALIZACAO * 2);
         }
 
-        iniciar();
+        // ===== LOGIN =====
+        // Credenciais (usuário e senha)
+        const USUARIO = 'mateus';
+        const SENHA = 'mateus123';
+
+        // Mostra a tela de login se não estiver logado
+        function verificarLogin() {
+            if (sessionStorage.getItem('logado') === 'sim') {
+                iniciar();
+            } else {
+                document.getElementById('telaLogin').classList.add('visivel');
+                document.getElementById('dashboard').style.display = 'none';
+            }
+        }
+
+        // Processa o envio do formulário de login
+        document.getElementById('formLogin').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const user = document.getElementById('loginUser').value.trim();
+            const pass = document.getElementById('loginPass').value;
+
+            if (user === USUARIO && pass === SENHA) {
+                sessionStorage.setItem('logado', 'sim');
+                document.getElementById('loginError').textContent = '';
+                iniciar();
+            } else {
+                document.getElementById('loginError').textContent = 'Usuário ou senha incorretos!';
+            }
+        });
+
+        // Botão Sair - desloga e volta para a tela de login
+        document.getElementById('btnSair').addEventListener('click', function () {
+            sessionStorage.removeItem('logado');
+            document.getElementById('telaLogin').classList.add('visivel');
+            document.getElementById('dashboard').style.display = 'none';
+        });
+
+        verificarLogin();
     </script>
 </body>
 </html>

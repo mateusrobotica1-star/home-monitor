@@ -1,0 +1,28 @@
+# ========================================
+# CONFIGURAÇÃO DA RENDER (opcional)
+# Se usar o "Render Bluerint" para deploy
+# ========================================
+
+services:
+  - type: web
+    name: home-monitor-backend
+    runtime: node
+    rootDir: backend
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: API_KEY
+        sync: false
+
+  - type: web
+    name: home-monitor-frontend
+    runtime: node
+    rootDir: frontend
+    env: node
+    buildCommand: npm install
+    startCommand: npm start

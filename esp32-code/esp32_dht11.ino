@@ -151,9 +151,8 @@ void lerEEnviar() {
         case HTTPC_ERROR_READ_TIMEOUT:
           Serial.println("Timeout de leitura (servidor demorou a responder).");
           break;
-        case HTTPC_ERROR_SSL_ACQUIRE:
-        case HTTPC_ERROR_SSL_CONNECTED:
-          Serial.println("Erro de SSL/TLS na conexao.");
+        case HTTPC_ERROR_NOT_CONNECTED:
+          Serial.println("Nao foi possivel conectar ao servidor (verifique SSL/URL e internet).");
           break;
         default:
           Serial.println("Verifique a URL e a conexao com a internet.");

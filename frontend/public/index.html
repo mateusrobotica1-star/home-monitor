@@ -100,7 +100,7 @@
         // URL do seu backend na Render
         // ========================================
         const API_URL = 'https://home-monitor-backend.onrender.com/api';
-        const INTERVALO_ATUALIZACAO = 30000; // 30 segundos
+        const INTERVALO_ATUALIZACAO = 10000; // 10 segundos
 
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
@@ -147,17 +147,15 @@
                 updateInfo.textContent = `Última atualização: ${atualizado}`;
 
                 // Verifica se o módulo está ativo (envia a cada 1 min)
-                // Se passou mais de 3 minutos, considera o módulo desligado
+                // Se passou mais de 2 minutos, considera o módulo desligado
                 const agora = new Date();
                 const ultima = new Date(dados.criado_em);
                 const diffMin = (agora - ultima) / 60000;
 
-                if (diffMin <= 3) {
+                if (diffMin <= 2) {
                     atualizarStatus(true, 'Módulo online');
-                } else if (diffMin <= 10) {
-                    atualizarStatus(false, 'Módulo desligado'); // parou de enviar há pouco
                 } else {
-                    atualizarStatus(false, 'Módulo desligado há muito tempo');
+                    atualizarStatus(false, 'Módulo desligado');
                 }
 
             } catch (error) {

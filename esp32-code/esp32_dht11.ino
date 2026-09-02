@@ -7,6 +7,13 @@
 #include <HTTPClient.h>
 #include <DHT.h>
 
+// Usa a porta USB nativa do ESP32-S3 para debug
+#if defined(ARDUINO_USB_CDC_ON_BOOT)
+  #define DEBUG_SERIAL Serial
+#else
+  #define DEBUG_SERIAL Serial
+#endif
+
 // CONFIGURAÇÕES DO WIFI - ALTERE AQUI!
 const char* WIFI_SSID = "SEU_WIFI";
 const char* WIFI_PASSWORD = "SUA_SENHA";
@@ -27,28 +34,23 @@ DHT dht(DHTPIN, DHTTYPE);
 const unsigned long ENVIO_INTERVALO = 60;
 unsigned long ultimoEnvio = 0;
 
-void setup() {
-  Serial.begin(115200);
-  delay(100);
+// Para controle de reconexao e watchdog
+unsigned long ultimoChecWiFi = 0;
+unsigned long ultimoWiFiOk = 0;
 
-  Serial.println("\n=== MONITOR DE TEMPERATURA ESP32-S3 ===");
-  Serial.println("Configurando sensor DHT11...");
-  dht.begin();
-  delay(500);
+// FUNÇÃO: conecta ao WiFi tentando até conseguir (com limite)
+bool conectarWiFi() {
+  if (WiFi.status() == WL_CONNECTED) {
+    return true;
+  }
 
-  // Mostra o WiFi disponível
-  Serial.println("\n--- Verificando WiFi ---");
-  Serial.print("SSID configurado: '");
-  Serial.print(WIFI_SSID);
-  Serial.println("'");
-
+  Serial.println("\n--- Conectando ao WiFi ---");
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("Conectando ao WiFi");
 
-  // Timeout de 15 segundos para conectar
   unsigned long inicio = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - inicio < 15000) {
+  // Tenta por até 30 segundos
+  while (WiFi.status() != WL_CONNECTED && millis() - inicio < 30000) {
     delay(500);
     Serial.print(".");
   }
@@ -63,15 +65,51 @@ void setup() {
     Serial.print(WiFi.RSSI());
     Serial.println(" dBm");
     Serial.println("---------------------------------");
+    return true;
   } else {
-    Serial.println("\nFALHA: Nao consegui conectar ao WiFi!");
-    Serial.println("Verifique WIFI_SSID e WIFI_PASSWORD no codigo.");
+    Serial.println("\nWiFi ainda nao disponivel - tentarei de novo.");
+    return false;
   }
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+
+  Serial.println("\n=== MONITOR DE TEMPERATURA ESP32-S3 ===");
+  Serial.println("Configurando sensor DHT11...");
+  dht.begin();
+  delay(500);
+
+  Serial.print("SSID configurado: '");
+  Serial.print(WIFI_SSID);
+  Serial.println("'");
+
+  conectarWiFi();
 }
 
 void loop() {
   unsigned long agora = millis();
 
+  // Atualiza o "último momento com WiFi ok" quando conectado
+  if (WiFi.status() == WL_CONNECTED) {
+    ultimoWiFiOk = agora;
+  }
+
+  // Verifica/reconecta o WiFi se caiu (a cada 5s)
+  if (WiFi.status() != WL_CONNECTED && (agora - ultimoChecWiFi > 5000)) {
+    ultimoChecWiFi = agora;
+    conectarWiFi();
+  }
+
+  // Watchdog: se ficar mais de 10 minutos sem WiFi, reinicia a placa
+  if (WiFi.status() != WL_CONNECTED && (agora - ultimoWiFiOk > 600000)) {
+    Serial.println(">> Sem WiFi por 10 min. Reiniciando o ESP32...");
+    delay(2000);
+    ESP.restart();
+  }
+
+  // Envia leitura no intervalo definido
   if (agora - ultimoEnvio >= ENVIO_INTERVALO * 1000) {
     ultimoEnvio = agora;
     lerEEnviar();
@@ -161,7 +199,6 @@ void lerEEnviar() {
     }
     http.end();
   } else {
-    Serial.println("WiFi desconectado, tentando reconectar...");
-    WiFi.reconnect();
+    Serial.println("WiFi desconectado - reconexao sera feita pelo loop.");
   }
 }

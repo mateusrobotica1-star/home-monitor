@@ -13,7 +13,7 @@ const char* WIFI_PASSWORD = "SUA_SENHA";
 
 // URL DO SEU BACKEND NA RENDER - ALTERE AQUI!
 // Exemplo: https://meu-monitor.onrender.com/api/temperatura
-const char* API_URL = "https://SEU-BACKEND.onrender.com/api/temperatura";
+const char* API_URL = "https://home-monitor-backend.onrender.com/api/temperatura";
 
 // SENHA/TOKEN PARA PROTEGER O ENDPOINT - CRIE UM TOKEN SEU
 const char* API_KEY = "sua_chave_secreta_aqui";

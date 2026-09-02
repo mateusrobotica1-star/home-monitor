@@ -198,10 +198,16 @@
             statusText.textContent = texto;
         }
 
+        // Retorna o cabeçalho de autorização com o token
+        function cabAutorizacao() {
+            const token = sessionStorage.getItem('token');
+            return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+        }
+
         // Busca a última leitura
         async function buscarAtual() {
             try {
-                const res = await fetch(`${API_URL}/temperatura/atual`);
+                const res = await fetch(`${API_URL}/temperatura/atual`, { headers: cabAutorizacao() });
                 if (res.status === 404) {
                     // Nenhuma leitura ainda - aguardando o sensor
                     document.getElementById('temp').textContent = '--';
@@ -240,7 +246,7 @@
         // Busca o histórico e desenha o gráfico
         async function buscarHistorico() {
             try {
-                const res = await fetch(`${API_URL}/leituras?limite=24`);
+                const res = await fetch(`${API_URL}/leituras?limite=24`, { headers: cabAutorizacao() });
                 if (!res.ok) throw new Error('Erro na API');
                 const dados = await res.json();
 
@@ -327,14 +333,11 @@
             setInterval(buscarHistorico, INTERVALO_ATUALIZACAO * 2);
         }
 
-        // ===== LOGIN =====
-        // Credenciais (usuário e senha)
-        const USUARIO = 'mateus';
-        const SENHA = 'mateus123';
+        // ===== LOGIN (autenticado no backend) =====
 
         // Mostra a tela de login se não estiver logado
         function verificarLogin() {
-            if (sessionStorage.getItem('logado') === 'sim') {
+            if (sessionStorage.getItem('logado') === 'sim' && sessionStorage.getItem('token')) {
                 iniciar();
             } else {
                 document.getElementById('telaLogin').classList.add('visivel');
@@ -343,23 +346,45 @@
         }
 
         // Processa o envio do formulário de login
-        document.getElementById('formLogin').addEventListener('submit', function (e) {
+        document.getElementById('formLogin').addEventListener('submit', async function (e) {
             e.preventDefault();
             const user = document.getElementById('loginUser').value.trim();
             const pass = document.getElementById('loginPass').value;
+            const btn = document.querySelector('#formLogin button');
+            const erroEl = document.getElementById('loginError');
 
-            if (user === USUARIO && pass === SENHA) {
-                sessionStorage.setItem('logado', 'sim');
-                document.getElementById('loginError').textContent = '';
-                iniciar();
-            } else {
-                document.getElementById('loginError').textContent = 'Usuário ou senha incorretos!';
+            erroEl.textContent = '';
+            btn.disabled = true;
+            btn.textContent = 'Entrando...';
+
+            try {
+                const res = await fetch(`${API_URL}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ usuario: user, senha: pass })
+                });
+
+                if (res.ok) {
+                    const dados = await res.json();
+                    sessionStorage.setItem('logado', 'sim');
+                    sessionStorage.setItem('token', dados.token);
+                    iniciar();
+                } else {
+                    erroEl.textContent = 'Usuário ou senha incorretos!';
+                }
+            } catch (err) {
+                erroEl.textContent = 'Erro de conexão. Tente novamente.';
+                console.error(err);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Entrar';
             }
         });
 
         // Botão Sair - desloga e volta para a tela de login
         document.getElementById('btnSair').addEventListener('click', function () {
             sessionStorage.removeItem('logado');
+            sessionStorage.removeItem('token');
             document.getElementById('telaLogin').classList.add('visivel');
             document.getElementById('dashboard').style.display = 'none';
         });

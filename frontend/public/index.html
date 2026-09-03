@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Monitor da Casa</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -232,6 +232,13 @@
         const API_URL = 'https://home-monitor-backend.onrender.com/api';
         const INTERVALO_ATUALIZACAO = 10000; // 10 segundos
         const SOM_LIMITE_ALERTA = 300; // limite para alerta de som (mesmo do ESP32)
+
+        // Registra o plugin de zoom (obrigatório para pinch/pan funcionarem)
+        if (typeof ChartZoom !== 'undefined') {
+            Chart.register(ChartZoom);
+        } else if (window.ChartZoom !== undefined) {
+            Chart.register(window.ChartZoom);
+        }
 
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');

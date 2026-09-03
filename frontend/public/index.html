@@ -134,6 +134,27 @@
             0%, 100% { opacity: 1; }
             50% { opacity: 0.55; }
         }
+
+        /* ===== Responsivo para celular ===== */
+        @media (max-width: 600px) {
+            .container { padding: 14px; }
+            header { flex-direction: column; align-items: flex-start; gap: 12px; }
+            header h1 { font-size: 20px; }
+            .cards { grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 20px 0; }
+            .card { padding: 16px 8px; }
+            .card .value { font-size: 30px; }
+            .card .value.som { font-size: 24px; }
+            .chart-container { padding: 10px 6px; overflow: hidden; }
+            .chart-container canvas {
+                max-height: 420px;
+                width: 100% !important;
+            }
+            .chart-container #grafico { height: 340px !important; }
+            .chart-container .chart-help { font-size: 11px; flex-wrap: wrap; gap: 6px !important; }
+        }
+        @media (max-width: 360px) {
+            .card .value { font-size: 26px; }
+        }
     </style>
 </head>
 <body>
@@ -177,7 +198,7 @@
             <div class="card">
                 <div class="icon">🔊</div>
                 <div class="label">Som</div>
-                <div class="value" style="font-size: 30px;"><span id="som">--</span></div>
+                <div class="value som" style="font-size: 30px;"><span id="som">--</span></div>
             </div>
             <div class="card">
                 <div class="icon">📍</div>
@@ -189,7 +210,7 @@
         <div class="update-info" id="updateInfo">Aguardando atualização...</div>
 
         <div class="chart-container">
-            <div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;color:#aaa;">
+            <div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;color:#aaa;" class="chart-help">
                 <span style="margin-right:auto;">🖱️ Role para dar zoom · arraste para navegar nos horários · duplo clique reseta</span>
                 <button id="btnResetZoom" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;">↺ Resetar zoom</button>
             </div>
@@ -318,6 +339,7 @@
                 }
 
                 const ctx = document.getElementById('grafico').getContext('2d');
+                const ehMobile = window.innerWidth <= 600;
                 chart = new Chart(ctx, {
                     type: 'line',
                     data: {
@@ -360,12 +382,16 @@
                     },
                     options: {
                         responsive: true,
+                        maintainAspectRatio: !ehMobile,
                         plugins: {
-                            legend: { labels: { color: '#fff' } },
+                            legend: {
+                                labels: { color: '#fff', boxWidth: ehMobile ? 10 : 40, font: { size: ehMobile ? 10 : 12 }, padding: ehMobile ? 8 : 10 }
+                            },
                             title: {
                                 display: true,
                                 text: 'Histórico do Quarto (últimas 24h)',
-                                color: '#fff'
+                                color: '#fff',
+                                font: { size: ehMobile ? 12 : 16 }
                             },
                             zoom: {
                                 zoom: {
@@ -380,12 +406,12 @@
                             }
                         },
                         scales: {
-                            x: { ticks: { color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                            x: { ticks: { color: '#aaa', maxTicksLimit: ehMobile ? 6 : 12, font: { size: ehMobile ? 9 : 11 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
                             yTemp: {
                                 type: 'linear',
                                 position: 'left',
-                                title: { display: true, text: '°C', color: '#ff6384' },
-                                ticks: { color: '#ff6384' },
+                                title: { display: true, text: '°C', color: '#ff6384', font: { size: ehMobile ? 9 : 11 } },
+                                ticks: { color: '#ff6384', font: { size: ehMobile ? 9 : 11 } },
                                 grid: { color: 'rgba(255,255,255,0.05)' }
                             },
                             yUmid: {
@@ -393,15 +419,15 @@
                                 position: 'right',
                                 min: 0,
                                 max: 100,
-                                title: { display: true, text: '%', color: '#36a2eb' },
-                                ticks: { color: '#36a2eb' },
+                                title: { display: true, text: '%', color: '#36a2eb', font: { size: ehMobile ? 9 : 11 } },
+                                ticks: { color: '#36a2eb', font: { size: ehMobile ? 9 : 11 } },
                                 grid: { drawOnChartArea: false }
                             },
                             ySom: {
                                 type: 'linear',
                                 position: 'right',
-                                title: { display: true, text: 'Som', color: '#ffce56' },
-                                ticks: { color: '#ffce56' },
+                                title: { display: true, text: 'Som', color: '#ffce56', font: { size: ehMobile ? 9 : 11 } },
+                                ticks: { color: '#ffce56', font: { size: ehMobile ? 9 : 11 } },
                                 grid: { drawOnChartArea: false }
                             }
                         }

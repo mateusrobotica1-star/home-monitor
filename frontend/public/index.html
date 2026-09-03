@@ -376,10 +376,10 @@ let historicoDados = null; // dados brutos carregados (usados p/ baixar gráfico
         // Busca o histórico e desenha o gráfico
         async function buscarHistorico() {
             try {
-                // Se um dia foi escolhido, busca as leituras daquele dia inteiro
-                const url = diaSelecionado
-                    ? `${API_URL}/leituras?data=${diaSelecionado}`
-                    : `${API_URL}/leituras?limite=24`;
+                // Sempre busca por DIA (padrão = hoje), para ter as 24h do dia inteiro
+                // mesmo quando o site fica fechado (não usa limite de 24 leituras)
+                const dia = diaSelecionado || new Date().toISOString().slice(0, 10);
+                const url = `${API_URL}/leituras?data=${dia}`;
                 const res = await fetch(url, { headers: cabAutorizacao() });
                 if (!res.ok) throw new Error('Erro na API');
                 const dados = await res.json();
@@ -457,9 +457,7 @@ let historicoDados = null; // dados brutos carregados (usados p/ baixar gráfico
                             },
                             title: {
                                 display: true,
-                                text: diaSelecionado
-                                    ? `Histórico do Quarto - ${diaSelecionado}`
-                                    : 'Histórico do Quarto (últimas 24h)',
+                                text: `Histórico do Quarto - ${diaSelecionado || new Date().toISOString().slice(0, 10)}`,
                                 color: '#fff',
                                 font: { size: ehMobile ? 12 : 16 }
                             },

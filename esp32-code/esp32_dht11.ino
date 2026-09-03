@@ -97,11 +97,15 @@ int   ultSomLido = 0;
 unsigned long ultimoCheckBuzzer = 0;
 bool buzzerLigado = false;
 
+// Controle de leitura do DHT11 (precisa de >= 1s entre leituras p/ não travar)
+unsigned long ultimoLeituraDHT = 0;
+
 // Protótipos das funções definidas mais abaixo (evita "was not declared in this scope")
 bool conectarWiFi();
 void lerEAtualizarReferencia();
 void enviarDados();
 void consultarBuzzer();
+bool lerDHTComGuarda();
 
 // FUNÇÃO: conecta ao WiFi tentando até conseguir (com limite)
 bool conectarWiFi() {
@@ -204,12 +208,10 @@ void loop() {
   if (agora - ultimoCheckDHT >= CHECAR_DHT_INTERVALO) {
     ultimoCheckDHT = agora;
 
-    float temp = dht.readTemperature();
-    float umid = dht.readHumidity();
-
-    if (!isnan(temp) && !isnan(umid)) {
-      ultTempLida = temp;
-      ultUmidLida = umid;
+    // Lê com intervalo mínimo p/ não travar o sensor
+    if (lerDHTComGuarda()) {
+      float temp = ultTempLida;
+      float umid = ultUmidLida;
 
       bool mudouTemp = fabs(temp - ultTempEnviada) >= VAR_TEMP_LIMITE;
       bool mudouUmid = fabs(umid - ultUmidEnviada) >= VAR_UMID_LIMITE;
@@ -260,6 +262,23 @@ void lerEAtualizarReferencia() {
   if (!isnan(ultTempLida)) ultTempEnviada = ultTempLida;
   if (!isnan(ultUmidLida)) ultUmidEnviada = ultUmidLida;
   ultSomEnviado = ultSomLido;
+}
+
+// Lê o DHT11 respeitando o intervalo mínimo (>= 1.5s) para não travar a leitura
+bool lerDHTComGuarda() {
+  unsigned long agora = millis();
+  if (agora - ultimoLeituraDHT < 1500) {
+    return false; // ainda muito cedo para reler
+  }
+  ultimoLeituraDHT = agora;
+  float t = dht.readTemperature();
+  float u = dht.readHumidity();
+  if (!isnan(t) && !isnan(u)) {
+    ultTempLida = t;
+    ultUmidLida = u;
+    return true;
+  }
+  return false;
 }
 
 void enviarDados() {

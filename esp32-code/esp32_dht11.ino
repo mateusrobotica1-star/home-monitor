@@ -39,7 +39,7 @@ const char* API_KEY = "1";
 #define SOM_LIMITE_ALERTA 300
 
 // Pino do buzzer (ajuste conforme sua montagem)
-#define BUZZER_PIN 7
+#define BUZZER_PIN 6
 
 // Endpoint/URL para consultar o estado do buzzer (mesmo servidor)
 const char* BUZZER_URL = "https://home-monitor-backend.onrender.com/api/buzzer";

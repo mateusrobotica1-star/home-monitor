@@ -312,13 +312,13 @@
                 const atualizado = formatarData(dados.criado_em);
                 updateInfo.textContent = `Última atualização: ${atualizado}`;
 
-                // Verifica se o módulo está ativo (envia a cada 1 min)
-                // Se passou mais de 2 minutos, considera o módulo desligado
+                // Verifica se o módulo está ativo (envia a cada 30s)
+                // Se passou mais de 1 minuto sem dado, considera o módulo desligado
                 const agora = new Date();
                 const ultima = new Date(dados.criado_em);
                 const diffMin = (agora - ultima) / 60000;
 
-                if (diffMin <= 2) {
+                if (diffMin <= 1) {
                     atualizarStatus(true, 'Módulo online');
                 } else {
                     atualizarStatus(false, 'Módulo desligado');
@@ -415,13 +415,23 @@
                             },
                             zoom: {
                                 zoom: {
-                                    wheel: { enabled: true },
-                                    pinch: { enabled: true },
-                                    mode: 'xy'
+                                    wheel: { enabled: true, speed: 0.03 },
+                                    pinch: {
+                                        enabled: true,
+                                        speed: 0.01,
+                                        threshold: 0.2
+                                    },
+                                    mode: 'x',
+                                    limits: {
+                                        x: { min: 'original', max: 'original', minRange: 3 },
+                                        y: { max: 'original', min: 'original' }
+                                    }
                                 },
                                 pan: {
                                     enabled: true,
-                                    mode: 'xy'
+                                    mode: 'x',
+                                    threshold: 30,
+                                    modifierKey: undefined
                                 }
                             }
                         },
@@ -480,7 +490,7 @@
             atualizarStatus(true, 'Conectando...');
             buscarAtual();
             buscarHistorico();
-            setInterval(buscarAtual, INTERVALO_ATUALIZACAO);
+            setInterval(buscarAtual, 5000);  // checa a cada 5s (status responde rapido)
             setInterval(buscarHistorico, INTERVALO_ATUALIZACAO * 2);
         }
 

@@ -98,6 +98,12 @@ unsigned long ultimoCheckBuzzer = 0;
 bool   buzzerLigado = false;
 bool   buzzerEstadoCache = false;
 
+// Protótipos das funções definidas mais abaixo (evita "was not declared in this scope")
+bool conectarWiFi();
+void lerEAtualizarReferencia();
+void enviarDados();
+void consultarBuzzer();
+
 // FUNÇÃO: conecta ao WiFi tentando até conseguir (com limite)
 bool conectarWiFi() {
   if (WiFi.status() == WL_CONNECTED) {

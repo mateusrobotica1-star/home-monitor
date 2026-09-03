@@ -241,11 +241,10 @@ void loop() {
   // Se "ligado" via botão do site, gera um tom contínuo no pino (barulho alto)
   // enquanto o usuário não desligar no site
   if (buzzerLigado) {
-    ledcSetup(0, 0, 8);          // configura o canal do PWM
-    ledcAttachPin(BUZZER_PIN, 0);
-    ledcWriteTone(0, 2200);      // tom de 2.2kHz, bem audível
+    ledcAttach(BUZZER_PIN, 2200, 8);   // API nova ESP32: pino, frequencia, resolucao
+    ledcWrite(BUZZER_PIN, 128);        // 50% duty -> tom audível contínuo
   } else {
-    ledcDetachPin(BUZZER_PIN);
+    ledcDetach(BUZZER_PIN);
     digitalWrite(BUZZER_PIN, LOW);
   }
 

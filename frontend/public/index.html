@@ -47,6 +47,32 @@
         .card .unit { font-size: 20px; color: #aaa; font-weight: 400; }
         .card .icon { font-size: 28px; margin-bottom: 8px; }
         .update-info { text-align: center; color: #888; font-size: 13px; margin-bottom: 20px; }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 14px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 14px 18px;
+            margin-bottom: 20px;
+        }
+        .control-group { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+        .control-group label { color: #ccc; }
+        .control-group input[type="date"] {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: #fff;
+            padding: 6px 10px;
+            font-size: 14px;
+        }
+        .control-group input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); }
+        .control-group input[type="date"]:focus { outline: none; border-color: #7c6ce0; }
+        .control-group.buzzer { gap: 12px; }
         .chart-container {
             background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.1);
@@ -155,6 +181,9 @@
             }
             .chart-container #grafico { height: 340px !important; }
             .chart-container .chart-help { font-size: 11px; flex-wrap: wrap; gap: 6px !important; }
+            .controls { flex-direction: column; align-items: stretch; }
+            .control-group { justify-content: space-between; }
+            .control-group input[type="date"] { flex: 1; min-width: 0; }
         }
         @media (max-width: 360px) {
             .card .value { font-size: 26px; }
@@ -213,6 +242,18 @@
 
         <div class="update-info" id="updateInfo">Aguardando atualização...</div>
 
+        <div class="controls">
+            <div class="control-group">
+                <label for="seletorDia">Ver gráfico do dia:</label>
+                <input type="date" id="seletorDia">
+                <button id="btnHoje" title="Voltar para hoje" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;">Hoje</button>
+            </div>
+            <div class="control-group buzzer">
+                <span id="buzzerLabel">Buzzer:</span>
+                <button id="btnBuzzer" title="Ligar/desligar o buzzer" style="min-width:120px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);color:#fff;border-radius:20px;padding:8px 16px;cursor:pointer;font-size:14px;font-weight:700;">🔕 Desligado</button>
+            </div>
+        </div>
+
         <div class="chart-container">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;color:#aaa;" class="chart-help">
             <span>👆 1 dedo: navegar · 🤏 2 dedos: dar zoom</span>
@@ -246,6 +287,7 @@
         const updateInfo = document.getElementById('updateInfo');
 
         let chart = null;
+let diaSelecionado = null; // null = mostrar todas as últimas (hoje)
 
         // Descreve o possível tipo de som com base no nível
         function descreverSom(nivel) {
@@ -333,7 +375,11 @@
         // Busca o histórico e desenha o gráfico
         async function buscarHistorico() {
             try {
-                const res = await fetch(`${API_URL}/leituras?limite=24`, { headers: cabAutorizacao() });
+                // Se um dia foi escolhido, busca as leituras daquele dia inteiro
+                const url = diaSelecionado
+                    ? `${API_URL}/leituras?data=${diaSelecionado}`
+                    : `${API_URL}/leituras?limite=24`;
+                const res = await fetch(url, { headers: cabAutorizacao() });
                 if (!res.ok) throw new Error('Erro na API');
                 const dados = await res.json();
 
@@ -409,7 +455,9 @@
                             },
                             title: {
                                 display: true,
-                                text: 'Histórico do Quarto (últimas 24h)',
+                                text: diaSelecionado
+                                    ? `Histórico do Quarto - ${diaSelecionado}`
+                                    : 'Histórico do Quarto (últimas 24h)',
                                 color: '#fff',
                                 font: { size: ehMobile ? 12 : 16 }
                             },
@@ -488,10 +536,88 @@
             document.getElementById('telaLogin').classList.remove('visivel');
             document.getElementById('dashboard').style.display = 'block';
             atualizarStatus(true, 'Conectando...');
+
+            // Define "hoje" como padrão no seletor de dia
+            const hoje = new Date().toISOString().slice(0, 10);
+            document.getElementById('seletorDia').value = hoje;
+
             buscarAtual();
             buscarHistorico();
+            buscarBuzzer();
             setInterval(buscarAtual, 5000);  // checa a cada 5s (status responde rapido)
             setInterval(buscarHistorico, INTERVALO_ATUALIZACAO * 2);
+            setInterval(buscarBuzzer, 10000); // sincroniza estado do buzzer
+
+            // Seletor de dia: muda o gráfico
+            document.getElementById('seletorDia').addEventListener('change', function (e) {
+                const v = e.target.value;
+                diaSelecionado = v && diaEhValido(v) ? v : null;
+                buscarHistorico();
+            });
+
+            // Botão "Hoje": volta para as últimas leituras
+            document.getElementById('btnHoje').onclick = function () {
+                diaSelecionado = null;
+                document.getElementById('seletorDia').value = new Date().toISOString().slice(0, 10);
+                buscarHistorico();
+            };
+
+            // Botão liga/desliga o buzzer
+            document.getElementById('btnBuzzer').onclick = function () {
+                const novoEstado = !estadoBuzzer;
+                setEstadoBuzzer(novoEstado);
+            };
+        }
+
+        function diaEhValido(d) {
+            return /^\d{4}-\d{2}-\d{2}$/.test(d);
+        }
+
+        // Busca o estado atual do buzzer
+        let estadoBuzzer = false;
+        async function buscarBuzzer() {
+            try {
+                const res = await fetch(`${API_URL}/buzzer`, { headers: cabAutorizacao() });
+                if (!res.ok) throw new Error('Erro');
+                const d = await res.json();
+                estadoBuzzer = d.ligado === true;
+                atualizarBuzzerUI();
+            } catch (error) {
+                console.error('Erro ao buscar buzzer:', error);
+            }
+        }
+
+        async function setEstadoBuzzer(ligado) {
+            const btn = document.getElementById('btnBuzzer');
+            btn.disabled = true;
+            try {
+                const res = await fetch(`${API_URL}/buzzer`, {
+                    method: 'POST',
+                    headers: cabAutorizacao(),
+                    body: JSON.stringify({ ligado })
+                });
+                if (!res.ok) throw new Error('Erro');
+                const d = await res.json();
+                estadoBuzzer = d.ligado === true;
+                atualizarBuzzerUI();
+            } catch (error) {
+                console.error('Erro ao alternar buzzer:', error);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function atualizarBuzzerUI() {
+            const btn = document.getElementById('btnBuzzer');
+            if (estadoBuzzer) {
+                btn.textContent = '🔔 Ligado';
+                btn.style.background = '#e53935';
+                btn.style.borderColor = '#e53935';
+            } else {
+                btn.textContent = '🔕 Desligado';
+                btn.style.background = 'rgba(255,255,255,0.1)';
+                btn.style.borderColor = 'rgba(255,255,255,0.25)';
+            }
         }
 
         // ===== LOGIN (autenticado no backend) =====

@@ -121,25 +121,86 @@ app.post('/api/temperatura', autenticar, async (req, res) => {
 });
 
 // ========================================
-// ROTA: Buscar últimas leituras
-// GET /api/leituras?limite=10
+// ROTA: Buscar leituras (por dia ou últimas)
+// GET /api/leituras?data=2026-01-15   -> leituras do dia
+// GET /api/leituras?limite=10          -> últimas N leituras
 // ========================================
 app.get('/api/leituras', exigirToken, async (req, res) => {
-  const limite = parseInt(req.query.limite) || 24;
+  const { data, limite } = req.query;
+  const limiteNum = parseInt(limite) || 24;
 
   try {
-    const { data, error } = await supabase
+    let consulta = supabase
       .from('leituras')
       .select('*')
-      .order('criado_em', { ascending: false })
-      .limit(limite);
+      .order('criado_em', { ascending: false });
+
+    if (data) {
+      // Busca leituras daquele dia (de 00:00:00 até 23:59:59)
+      const dataInicio = `${data}T00:00:00`;
+      const dataFim = `${data}T23:59:59`;
+      consulta = consulta
+        .gte('criado_em', dataInicio)
+        .lte('criado_em', dataFim);
+    } else {
+      consulta = consulta.limit(limiteNum);
+    }
+
+    const { data: dados, error } = await consulta;
 
     if (error) throw error;
 
-    res.json(data);
+    res.json(dados);
   } catch (error) {
     console.error('Erro ao buscar:', error.message);
     res.status(500).json({ erro: 'Erro ao buscar leituras' });
+  }
+});
+
+// ========================================
+// ROTA: Consultar estado do buzzer (ESP32 puxa)
+// GET /api/buzzer
+// ========================================
+app.get('/api/buzzer', autenticar, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('config')
+      .select('valor')
+      .eq('chave', 'buzzer')
+      .maybeSingle();
+
+    if (error) throw error;
+
+    res.json({ ligado: data ? data.valor === 1 : false });
+  } catch (error) {
+    console.error('Erro ao buscar buzzer:', error.message);
+    res.status(500).json({ erro: 'Erro ao buscar estado do buzzer' });
+  }
+});
+
+// ========================================
+// ROTA: Ligar/desligar o buzzer (do site)
+// POST /api/buzzer  body: { ligado: true }
+// ========================================
+app.post('/api/buzzer', exigirToken, async (req, res) => {
+  const { ligado } = req.body;
+  const valor = ligado ? 1 : 0;
+
+  try {
+    const { data, error } = await supabase
+      .from('config')
+      .upsert({
+        chave: 'buzzer',
+        valor: valor,
+        atualizado_em: new Date().toISOString()
+      }, { onConflict: 'chave' });
+
+    if (error) throw error;
+
+    res.json({ ligado: ligado === true });
+  } catch (error) {
+    console.error('Erro ao salvar buzzer:', error.message);
+    res.status(500).json({ erro: 'Erro ao atualizar o buzzer' });
   }
 });
 
@@ -184,8 +245,11 @@ app.get('/', (req, res) => {
     endpoints: [
       { metodo: 'POST', caminho: '/api/temperatura', descricao: 'Recebe dados do ESP32 (x-api-key)' },
       { metodo: 'POST', caminho: '/api/login', descricao: 'Login do site - retorna token' },
+      { metodo: 'GET', caminho: '/api/leituras?data=2026-01-15', descricao: 'Busca leituras por dia (Bearer token)' },
       { metodo: 'GET', caminho: '/api/leituras?limite=10', descricao: 'Busca últimas leituras (Bearer token)' },
       { metodo: 'GET', caminho: '/api/temperatura/atual', descricao: 'Última leitura registrada (Bearer token)' },
+      { metodo: 'GET', caminho: '/api/buzzer', descricao: 'Estado do buzzer (ESP32, x-api-key)' },
+      { metodo: 'POST', caminho: '/api/buzzer', descricao: 'Liga/desliga buzzer (Bearer token)' },
       { metodo: 'GET', caminho: '/health', descricao: 'Verifica se está online' }
     ]
   });

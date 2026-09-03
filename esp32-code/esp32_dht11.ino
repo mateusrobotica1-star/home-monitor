@@ -241,9 +241,9 @@ void loop() {
   // Se "ligado" via botão do site, gera um tom contínuo no pino (barulho alto)
   // enquanto o usuário não desligar no site
   if (buzzerLigado) {
-    // Buzzer passivo 5V: frequência ~2500Hz e duty alto p/ volume máximo no 3.3V
-    ledcAttach(BUZZER_PIN, 2500, 8);   // API nova ESP32: pino, frequencia, resolucao
-    ledcWrite(BUZZER_PIN, 200);        // duty alto (200/255) -> mais volume
+    // Buzzer passivo: frequência 3kHz (ressonância típica) + duty bem alto
+    ledcAttach(BUZZER_PIN, 3000, 8);   // API nova ESP32: pino, frequencia, resolucao
+    ledcWrite(BUZZER_PIN, 240);        // duty 240/255 (94%) -> mais volume possivel
   } else {
     ledcDetach(BUZZER_PIN);
     digitalWrite(BUZZER_PIN, LOW);

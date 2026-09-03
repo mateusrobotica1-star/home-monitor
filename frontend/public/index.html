@@ -288,6 +288,7 @@
 
         let chart = null;
 let diaSelecionado = null; // null = mostrar todas as últimas (hoje)
+let historicoDados = null; // dados brutos carregados (usados p/ baixar gráfico completo)
 
         // Descreve o possível tipo de som com base no nível
         function descreverSom(nivel) {
@@ -385,6 +386,7 @@ let diaSelecionado = null; // null = mostrar todas as últimas (hoje)
 
                 // Inverte para ordem cronológica
                 const ordenado = dados.reverse();
+                historicoDados = ordenado; // guarda todos os pontos p/ baixar gráfico completo
 
                 const labels = ordenado.map(d => formatarData(d.criado_em));
                 const temperaturas = ordenado.map(d => d.temperatura);
@@ -517,13 +519,69 @@ let diaSelecionado = null; // null = mostrar todas as últimas (hoje)
                     if (chart) chart.resetZoom();
                 };
 
-                // Botão baixar gráfico como imagem
+                // Botão baixar gráfico COMPLETO (todo o dia/histórico) como imagem
                 document.getElementById('btnBaixar').onclick = function () {
-                    if (!chart) return;
-                    const link = document.createElement('a');
-                    link.download = 'grafico-monitor.png';
-                    link.href = chart.toBase64Image('image/png', 1);
-                    link.click();
+                    if (!historicoDados || historicoDados.length === 0) {
+                        alert('Ainda não há dados para baixar o gráfico.');
+                        return;
+                    }
+
+                    // Guarda o estado de zoom atual e reorganiza (se houver zoom)
+                    const dadosCompletos = historicoDados;
+
+                    const labels = dadosCompletos.map(d => formatarData(d.criado_em));
+                    const temperaturas = dadosCompletos.map(d => d.temperatura);
+                    const umidades = dadosCompletos.map(d => d.umidade);
+                    const sons = dadosCompletos.map(d => d.som !== undefined ? d.som : 0);
+                    const limitesSom = dadosCompletos.map(() => SOM_LIMITE_ALERTA);
+
+                    // Cria um gráfico temporário grande, off-screen, com TODOS os pontos
+                    const tmpCanvas = document.createElement('canvas');
+                    tmpCanvas.width = 1600;   // imagem larga p/ legibilidade
+                    tmpCanvas.height = 900;
+                    tmpCanvas.style.display = 'none';
+                    document.body.appendChild(tmpCanvas);
+
+                    const titulo = diaSelecionado
+                        ? `Histórico do Quarto - ${diaSelecionado}`
+                        : 'Histórico do Quarto (últimas 24h)';
+
+                    const tmpChart = new Chart(tmpCanvas.getContext('2d'), {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                { label: 'Temperatura (°C)', data: temperaturas, borderColor: '#ff6384', backgroundColor: 'rgba(255,99,132,0.1)', yAxisID: 'yTemp', tension: 0.3, pointRadius: 1 },
+                                { label: 'Umidade (%)', data: umidades, borderColor: '#36a2eb', backgroundColor: 'rgba(54,162,235,0.1)', yAxisID: 'yUmid', tension: 0.3, pointRadius: 1 },
+                                { label: 'Som', data: sons, borderColor: '#ffce56', backgroundColor: 'rgba(255,206,86,0.15)', yAxisID: 'ySom', tension: 0.3, pointRadius: 1 },
+                                { label: 'Limite som', data: limitesSom, borderColor: 'rgba(255,206,86,0.4)', borderDash: [5, 5], pointRadius: 0, borderWidth: 1, yAxisID: 'ySom' }
+                            ]
+                        },
+                        options: {
+                            responsive: false,
+                            plugins: {
+                                legend: { labels: { boxWidth: 40, font: { size: 18 } } },
+                                title: { display: true, text: titulo, font: { size: 26 } },
+                                zoom: { zoom: { wheel: { enabled: false } }, pan: { enabled: false } }
+                            },
+                            scales: {
+                                x: { ticks: { font: { size: 14 }, maxTicksLimit: 12 }, grid: { color: 'rgba(0,0,0,0.05)' } },
+                                yTemp: { type: 'linear', position: 'left', title: { display: true, text: '°C', color: '#ff6384' }, ticks: { color: '#ff6384' } },
+                                yUmid: { type: 'linear', position: 'right', min: 0, max: 100, title: { display: true, text: '%', color: '#36a2eb' }, ticks: { color: '#36a2eb' }, grid: { drawOnChartArea: false } },
+                                ySom: { type: 'linear', position: 'right', title: { display: true, text: 'Som', color: '#ffce56' }, ticks: { color: '#ffce56' }, grid: { drawOnChartArea: false } }
+                            }
+                        }
+                    });
+
+                    // Espera o gráfico desenhar e baixa a imagem grande
+                    setTimeout(function () {
+                        const link = document.createElement('a');
+                        link.download = diaSelecionado ? `grafico-${diaSelecionado}.png` : 'grafico-24h.png';
+                        link.href = tmpChart.toBase64Image('image/png', 1);
+                        link.click();
+                        tmpChart.destroy();
+                        document.body.removeChild(tmpCanvas);
+                    }, 500);
                 };
 
             } catch (error) {

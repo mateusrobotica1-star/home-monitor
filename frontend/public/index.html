@@ -51,8 +51,11 @@
             border: 1px solid rgba(255,255,255,0.1);
             border-radius: 16px;
             padding: 20px;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
-        .chart-container canvas { max-height: 300px; }
+        .chart-container canvas { max-height: 300px; touch-action: none; }
         .loading { text-align: center; padding: 40px; color: #aaa; }
         .error { text-align: center; padding: 40px; color: #f44336; }
         footer { text-align: center; margin-top: 40px; color: #666; font-size: 12px; }

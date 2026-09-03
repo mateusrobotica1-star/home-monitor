@@ -261,8 +261,10 @@ void loop() {
 
 // Atualiza as referências (para não enviar por variação logo após o envio periódico)
 void lerEAtualizarReferencia() {
-  ultTempLida = dht.readTemperature();
-  ultUmidLida = dht.readHumidity();
+  float t = dht.readTemperature();
+  float u = dht.readHumidity();
+  if (!isnan(t)) ultTempLida = t;
+  if (!isnan(u)) ultUmidLida = u;
   ultSomLido = lerNivelSom();
   if (!isnan(ultTempLida)) ultTempEnviada = ultTempLida;
   if (!isnan(ultUmidLida)) ultUmidEnviada = ultUmidLida;
@@ -293,6 +295,12 @@ void enviarDados() {
 
   Serial.println("\n=== Nova leitura ===");
   Serial.printf("Temperatura: %.1f C | Umidade: %.1f%%\n", temperatura, umidade);
+
+  // Se o sensor não leu (nan), NÃO envia (evita JSON inválido e poluir o gráfico)
+  if (isnan(temperatura) || isnan(umidade)) {
+    Serial.println(">> Sensor sem leitura valida (nan). PULANDO envio p/ nao gerar 400.");
+    return;
+  }
 
   // Lê o nível de som em tempo real
   int nivelSom = lerNivelSom();

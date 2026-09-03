@@ -26,9 +26,14 @@ const char* API_URL = "https://home-monitor-backend.onrender.com/api/temperatura
 // SENHA/TOKEN PARA PROTEGER O ENDPOINT - USE A MESMA DA RENDER!
 const char* API_KEY = "1";
 
-// Pin do DHT11 (default GPIO4 no ESP32-S3)
+// Pin do sensor de temperatura (default GPIO4 no ESP32-S3)
 #define DHTPIN 4
-#define DHTTYPE DHT11
+
+// === TIPO DE SENSOR ===
+// DHT11 = modelo barato (resolucao 1°C, precisao +-2°C, responde mal ao calor)
+// DHT22 = modelo bom   (resolucao 0.1°C, precisao +-0.5°C, responde bem ao calor)
+// Se esteve preso em 14.x com calor real, troque o sensor p/ DHT22 e mude a linha:
+#define DHTTYPE DHT22   // <-- troque DHT22 por DHT11 se for usar o sensor antigo
 
 // Pino do som
 #define SOM_PIN 5

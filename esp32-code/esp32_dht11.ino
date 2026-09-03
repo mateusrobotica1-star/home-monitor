@@ -62,8 +62,8 @@ const unsigned long AUTO_ENVIO_INTERVALO = 30000;  // envia sempre a cada 30s (k
 
 // Limiar de variação para enviar imediatamente
 const float VAR_TEMP_LIMITE = 0.1;   // envia se temperatura mudar >= 0.1°C
-const float VAR_UMID_LIMITE = 1.0;   // envia se umidade mudar >= 1%
-const int   VAR_SOM_LIMITE = 20;     // envia se o som variar >= 20
+const float VAR_UMID_LIMITE = 0.5;   // envia se umidade mudar >= 0.5%
+const int   VAR_SOM_LIMITE = 10;     // envia se o som variar >= 10
 
 // Últimos valores enviados
 float ultTempEnviada = -999;

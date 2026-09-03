@@ -6,6 +6,7 @@
     <title>Monitor da Casa</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -188,6 +189,10 @@
         <div class="update-info" id="updateInfo">Aguardando atualização...</div>
 
         <div class="chart-container">
+            <div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;color:#aaa;">
+                <span style="margin-right:auto;">🖱️ Role para dar zoom · arraste para navegar nos horários · duplo clique reseta</span>
+                <button id="btnResetZoom" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;">↺ Resetar zoom</button>
+            </div>
             <canvas id="grafico"></canvas>
         </div>
 
@@ -208,6 +213,16 @@
         const updateInfo = document.getElementById('updateInfo');
 
         let chart = null;
+
+        // Descreve o possível tipo de som com base no nível
+        function descreverSom(nivel) {
+            if (nivel >= 3500) return 'possível passos ou batida forte';
+            if (nivel >= 2500) return 'possível porta batendo ou objeto caindo';
+            if (nivel >= 1500) return 'possível conversa alta ou TV';
+            if (nivel >= 800) return 'possível conversa normal ou fala';
+            if (nivel >= SOM_LIMITE_ALERTA) return 'barulho moderado';
+            return 'nível de som';
+        }
 
         // Formata data e hora em pt-BR
         function formatarData(isoString) {
@@ -255,6 +270,7 @@
                 document.getElementById('som').textContent = nivelSom;
                 const alertaEl = document.getElementById('alertaSom');
                 if (nivelSom > SOM_LIMITE_ALERTA) {
+                    alertaEl.textContent = '🔊 Som alto detectado no quarto! (' + descreverSom(nivelSom) + ')';
                     alertaEl.classList.add('ativo');
                 } else {
                     alertaEl.classList.remove('ativo');
@@ -350,6 +366,17 @@
                                 display: true,
                                 text: 'Histórico do Quarto (últimas 24h)',
                                 color: '#fff'
+                            },
+                            zoom: {
+                                zoom: {
+                                    wheel: { enabled: true },
+                                    pinch: { enabled: true },
+                                    mode: 'xy'
+                                },
+                                pan: {
+                                    enabled: true,
+                                    mode: 'xy'
+                                }
                             }
                         },
                         scales: {
@@ -380,6 +407,13 @@
                         }
                     }
                 });
+
+                // Botão resetar zoom
+                document.getElementById('btnResetZoom').onclick = function () {
+                    if (chart) {
+                        chart.resetZoom();
+                    }
+                };
 
             } catch (error) {
                 console.error('Erro ao buscar histórico:', error);

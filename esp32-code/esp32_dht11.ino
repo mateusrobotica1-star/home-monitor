@@ -29,9 +29,8 @@ const char* API_KEY = "sua_chave_secreta_aqui";
 #define DHTTYPE DHT11
 
 // Pin do sensor de som KY-037 (saída analógica AOUT/DO)
-// Conecte o pino AOUT/DO do módulo em um pino ADC válido do ESP32-S3
-// GPIO1 e GPIO2 são pinos ADC1. Se preferir outro, use GPIO3, GPIO5, GPIO18 etc.
-#define SOM_PIN 1
+// GPIO5 é um pino ADC1 válido no ESP32-S3, separado do GPIO4 (DHT11)
+#define SOM_PIN 5
 
 // Limite de alerta de som (ajuste conforme sua sensibilidade)
 // Valores tipicos: silencio ~10-50, barulho alto ~200-1000+

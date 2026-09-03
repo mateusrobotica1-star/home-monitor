@@ -6,6 +6,8 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <DHT.h>
+#include <math.h>
+#include <stdlib.h>
 
 // Usa a porta USB nativa do ESP32-S3 para debug
 #if defined(ARDUINO_USB_CDC_ON_BOOT)
@@ -53,13 +55,34 @@ int lerNivelSom() {
   return maxLeitura;
 }
 
-// Intervalo de envio em segundos (60 = 1 minuto)
-const unsigned long ENVIO_INTERVALO = 60;
-unsigned long ultimoEnvio = 0;
+// Intervalos de verificação
+const unsigned long CHECAR_SOM_INTERVALO = 1500;   // verifica som a cada 1,5s
+const unsigned long CHECAR_DHT_INTERVALO = 10000;  // verifica DHT11 a cada 10s
+const unsigned long AUTO_ENVIO_INTERVALO = 30000;  // envia sempre a cada 30s (keep-alive)
+
+// Limiar de variação para enviar imediatamente
+const float VAR_TEMP_LIMITE = 0.1;   // envia se temperatura mudar >= 0.1°C
+const float VAR_UMID_LIMITE = 1.0;   // envia se umidade mudar >= 1%
+const int   VAR_SOM_LIMITE = 20;     // envia se o som variar >= 20
+
+// Últimos valores enviados
+float ultTempEnviada = -999;
+float ultUmidEnviada = -999;
+int   ultSomEnviado = -999;
+
+// Controle de tempo
+unsigned long ultimoCheckSom = 0;
+unsigned long ultimoCheckDHT = 0;
+unsigned long ultimoEnvioAutomatico = 0;
 
 // Para controle de reconexao e watchdog
 unsigned long ultimoChecWiFi = 0;
 unsigned long ultimoWiFiOk = 0;
+
+// Estado atual (mais recente lido)
+float ultTempLida = -999;
+float ultUmidLida = -999;
+int   ultSomLido = 0;
 
 // FUNÇÃO: conecta ao WiFi tentando até conseguir (com limite)
 bool conectarWiFi() {
@@ -110,10 +133,11 @@ void setup() {
 
   conectarWiFi();
 
-  // Envia uma leitura imediatamente ao ligar (sem esperar os 60s)
+  // Envia uma leitura imediatamente ao ligar
   if (WiFi.status() == WL_CONNECTED) {
     delay(2000);
-    lerEEnviar();
+    lerEAtualizarReferencia();
+    enviarDados();
   }
 }
 
@@ -138,40 +162,76 @@ void loop() {
     ESP.restart();
   }
 
-  // Envia leitura no intervalo definido
-  if (agora - ultimoEnvio >= ENVIO_INTERVALO * 1000) {
-    ultimoEnvio = agora;
-    lerEEnviar();
-  }
+  // ---- Verifica o som com frequência (quase instantâneo) ----
+  if (agora - ultimoCheckSom >= CHECAR_SOM_INTERVALO) {
+    ultimoCheckSom = agora;
+    int somAtual = lerNivelSom();
+    ultSomLido = somAtual;
 
-  delay(1000);
-}
-
-void lerEEnviar() {
-  Serial.println("\n=== Nova leitura ===");
-
-  // Lê o sensor
-  float temperatura = dht.readTemperature();
-  float umidade = dht.readHumidity();
-
-  // Se o sensor falhar, tenta de novo
-  if (isnan(temperatura) || isnan(umidade)) {
-    Serial.println("Falha ao ler o sensor DHT11! Tentando novamente...");
-    delay(2000);
-    temperatura = dht.readTemperature();
-    umidade = dht.readHumidity();
-    if (isnan(temperatura) || isnan(umidade)) {
-      Serial.println("Falha definitiva ao ler o sensor.");
-      Serial.println("Verifique a fiação: VCC->3.3V, DATA->GPIO4, GND->GND");
-      return;
+    // Se o som mudou o suficiente, envia imediatamente
+    if (abs(somAtual - ultSomEnviado) >= VAR_SOM_LIMITE) {
+      Serial.printf("Som mudou: %d -> %d. Enviando...\n", ultSomEnviado, somAtual);
+      enviarDados();
+      ultSomEnviado = somAtual;
     }
   }
 
+  // ---- Verifica o DHT11 com frequência menor (temp/umidade) ----
+  if (agora - ultimoCheckDHT >= CHECAR_DHT_INTERVALO) {
+    ultimoCheckDHT = agora;
+
+    float temp = dht.readTemperature();
+    float umid = dht.readHumidity();
+
+    if (!isnan(temp) && !isnan(umid)) {
+      ultTempLida = temp;
+      ultUmidLida = umid;
+
+      bool mudouTemp = fabs(temp - ultTempEnviada) >= VAR_TEMP_LIMITE;
+      bool mudouUmid = fabs(umid - ultUmidEnviada) >= VAR_UMID_LIMITE;
+
+      // Se algum valor mudou, envia imediatamente
+      if (mudouTemp || mudouUmid) {
+        Serial.printf("Temp/umid mudou: %.1fC/%.1f%%. Enviando...\n", temp, umid);
+        enviarDados();
+        ultTempEnviada = temp;
+        ultUmidEnviada = umid;
+      }
+    }
+  }
+
+  // ---- Envia periodicamente mesmo sem mudanças (keep-alive) ----
+  if (agora - ultimoEnvioAutomatico >= AUTO_ENVIO_INTERVALO) {
+    ultimoEnvioAutomatico = agora;
+    lerEAtualizarReferencia();
+    enviarDados();
+  }
+
+  delay(200);
+}
+
+// Atualiza as referências (para não enviar por variação logo após o envio periódico)
+void lerEAtualizarReferencia() {
+  ultTempLida = dht.readTemperature();
+  ultUmidLida = dht.readHumidity();
+  ultSomLido = lerNivelSom();
+  if (!isnan(ultTempLida)) ultTempEnviada = ultTempLida;
+  if (!isnan(ultUmidLida)) ultUmidEnviada = ultUmidLida;
+  ultSomEnviado = ultSomLido;
+}
+
+void enviarDados() {
+  // Usa os valores mais recentes lidos
+  float temperatura = ultTempLida;
+  float umidade = ultUmidLida;
+
+  Serial.println("\n=== Nova leitura ===");
   Serial.printf("Temperatura: %.1f C | Umidade: %.1f%%\n", temperatura, umidade);
 
-  // Lê o nível de som do KY-037
+  // Lê o nível de som em tempo real
   int nivelSom = lerNivelSom();
-  Serial.printf("Nivel de som: %d (limite de alerta: %d)\n", nivelSom, SOM_LIMITE_ALERTA);
+  ultSomLido = nivelSom;
+  Serial.printf("Nivel de som: %d (limite: %d)\n", nivelSom, SOM_LIMITE_ALERTA);
   if (nivelSom > SOM_LIMITE_ALERTA) {
     Serial.println(">> ALERTA: som alto detectado!");
   }

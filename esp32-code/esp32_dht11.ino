@@ -37,8 +37,9 @@ const char* API_KEY = "1";
 // Valores tipicos: silencio ~10-50, barulho alto ~200-1000+
 #define SOM_LIMITE_ALERTA 300
 
-// Pino do buzzer (GPIO6)
-#define BUZZER_PIN 6
+// Pino do buzzer (GPIO12) - garante 3.3V de saída
+// (GPIO6 no ESP32-S3 e' pino de flash interna e nao sai 3.3V real)
+#define BUZZER_PIN 12
 
 // URL para consultar o estado do buzzer no servidor
 const char* BUZZER_URL = "https://home-monitor-backend.onrender.com/api/buzzer";
@@ -237,9 +238,16 @@ void loop() {
   }
 
   // ---- Controla o pino do buzzer conforme o estado do servidor ----
-  // Se "ligado" via botão do site, pino 6 fica ALTO (som contínuo)
+  // Se "ligado" via botão do site, gera um tom contínuo no pino (barulho alto)
   // enquanto o usuário não desligar no site
-  digitalWrite(BUZZER_PIN, buzzerLigado ? HIGH : LOW);
+  if (buzzerLigado) {
+    ledcSetup(0, 0, 8);          // configura o canal do PWM
+    ledcAttachPin(BUZZER_PIN, 0);
+    ledcWriteTone(0, 2200);      // tom de 2.2kHz, bem audível
+  } else {
+    ledcDetachPin(BUZZER_PIN);
+    digitalWrite(BUZZER_PIN, LOW);
+  }
 
   delay(200);
 }

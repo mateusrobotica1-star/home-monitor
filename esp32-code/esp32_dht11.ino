@@ -17,14 +17,14 @@
 #endif
 
 // CONFIGURAÇÕES DO WIFI - ALTERE AQUI!
-const char* WIFI_SSID = "SEU_WIFI";
-const char* WIFI_PASSWORD = "SUA_SENHA";
+const char* WIFI_SSID = "Mateus";
+const char* WIFI_PASSWORD = "mateus2000";
 
 // URL DO SEU BACKEND NA RENDER - JÁ APONTA PARA O SEU!
 const char* API_URL = "https://home-monitor-backend.onrender.com/api/temperatura";
 
 // SENHA/TOKEN PARA PROTEGER O ENDPOINT - USE A MESMA DA RENDER!
-const char* API_KEY = "sua_chave_secreta_aqui";
+const char* API_KEY = "1";
 
 // Pin do DHT11 (default GPIO4 no ESP32-S3)
 #define DHTPIN 4

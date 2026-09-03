@@ -40,6 +40,12 @@ const char* API_KEY = "1";
 // Pino do buzzer (GPIO6)
 #define BUZZER_PIN 6
 
+// URL para consultar o estado do buzzer no servidor
+const char* BUZZER_URL = "https://home-monitor-backend.onrender.com/api/buzzer";
+
+// Intervalo (ms) de consulta do estado do buzzer
+const unsigned long CHECAR_BUZZER_INTERVALO = 5000;
+
 DHT dht(DHTPIN, DHTTYPE);
 
 // Função para medir o nível de som (0-4095)
@@ -86,10 +92,15 @@ float ultTempLida = -999;
 float ultUmidLida = -999;
 int   ultSomLido = 0;
 
+// Controle do buzzer
+unsigned long ultimoCheckBuzzer = 0;
+bool buzzerLigado = false;
+
 // Protótipos das funções definidas mais abaixo (evita "was not declared in this scope")
 bool conectarWiFi();
 void lerEAtualizarReferencia();
 void enviarDados();
+void consultarBuzzer();
 
 // FUNÇÃO: conecta ao WiFi tentando até conseguir (com limite)
 bool conectarWiFi() {
@@ -149,6 +160,7 @@ void setup() {
     delay(2000);
     lerEAtualizarReferencia();
     enviarDados();
+    consultarBuzzer();
   }
 }
 
@@ -218,18 +230,16 @@ void loop() {
     enviarDados();
   }
 
-  // ---- Controla o buzzer como ALARME de som alto ----
-  // Lê o som atual; se passar do limite, o buzzer toca alto
-  int somCheck = lerNivelSom();
-  if (somCheck > SOM_LIMITE_ALERTA) {
-    // Bip intermitente alto enquanto houver barulho
-    digitalWrite(BUZZER_PIN, HIGH);
-    delay(60);
-    digitalWrite(BUZZER_PIN, LOW);
-    delay(120);
-  } else {
-    digitalWrite(BUZZER_PIN, LOW);
+  // ---- Verifica o estado do buzzer no servidor (ligado/desligado) ----
+  if (agora - ultimoCheckBuzzer >= CHECAR_BUZZER_INTERVALO) {
+    ultimoCheckBuzzer = agora;
+    consultarBuzzer();
   }
+
+  // ---- Controla o pino do buzzer conforme o estado do servidor ----
+  // Se "ligado" via botão do site, pino 6 fica ALTO (som contínuo)
+  // enquanto o usuário não desligar no site
+  digitalWrite(BUZZER_PIN, buzzerLigado ? HIGH : LOW);
 
   delay(200);
 }
@@ -335,4 +345,29 @@ void enviarDados() {
   } else {
     Serial.println("WiFi desconectado - reconexao sera feita pelo loop.");
   }
+}
+
+// Consulta o estado do buzzer no servidor (ligado/desligado pelo botão do site)
+void consultarBuzzer() {
+  if (WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+
+  HTTPClient http;
+  http.setTimeout(15000);
+  http.begin(BUZZER_URL);
+  http.addHeader("x-api-key", API_KEY);
+
+  int httpCode = http.GET();
+
+  if (httpCode == 200) {
+    String resposta = http.getString();
+    // Resposta esperada: {"ligado":true} ou {"ligado":false}
+    buzzerLigado = resposta.indexOf("\"ligado\":true") >= 0;
+    Serial.printf("Estado do buzzer no site: %s\n", buzzerLigado ? "LIGADO" : "desligado");
+  } else {
+    Serial.printf("Falha ao consultar buzzer. HTTP: %d\n", httpCode);
+  }
+
+  http.end();
 }

@@ -215,6 +215,7 @@
         <div class="chart-container">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;color:#aaa;" class="chart-help">
             <span>👆 1 dedo: navegar · 🤏 2 dedos: dar zoom</span>
+            <button id="btnBaixar" title="Baixar grafico como imagem" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;">⬇ Baixar</button>
             <button id="btnResetZoom" title="Voltar ao inicio" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;">↺ Resetar</button>
         </div>
             <canvas id="grafico"></canvas>
@@ -343,6 +344,14 @@
 
                 const ctx = document.getElementById('grafico').getContext('2d');
                 const ehMobile = window.innerWidth <= 600;
+                const graficoCanvas = document.getElementById('grafico');
+                // Garante que o browser nao roube o toque para zoom de pagina no canvas
+                if (graficoCanvas) {
+                    graficoCanvas.style.touchAction = 'none';
+                    graficoCanvas.style.userSelect = 'none';
+                    const wrapper = graficoCanvas.parentElement;
+                    if (wrapper) wrapper.style.touchAction = 'none';
+                }
                 chart = new Chart(ctx, {
                     type: 'line',
                     data: {
@@ -440,6 +449,15 @@
                 // Botão resetar zoom
                 document.getElementById('btnResetZoom').onclick = function () {
                     if (chart) chart.resetZoom();
+                };
+
+                // Botão baixar gráfico como imagem
+                document.getElementById('btnBaixar').onclick = function () {
+                    if (!chart) return;
+                    const link = document.createElement('a');
+                    link.download = 'grafico-monitor.png';
+                    link.href = chart.toBase64Image('image/png', 1);
+                    link.click();
                 };
 
             } catch (error) {

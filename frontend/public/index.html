@@ -210,10 +210,12 @@
         <div class="update-info" id="updateInfo">Aguardando atualização...</div>
 
         <div class="chart-container">
-            <div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;color:#aaa;" class="chart-help">
-                <span style="margin-right:auto;">🖱️ Role para dar zoom · arraste para navegar nos horários · duplo clique reseta</span>
-                <button id="btnResetZoom" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;">↺ Resetar zoom</button>
-            </div>
+<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;color:#aaa;" class="chart-help">
+            <span style="margin-right:auto;">👆 Arraste para navegar nos horários · dê zoom com os botões</span>
+            <button id="btnZoomMais" title="Dar zoom" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:16px;line-height:1;">+</button>
+            <button id="btnZoomMenos" title="Diminuir zoom" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:16px;line-height:1;">−</button>
+            <button id="btnResetZoom" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;">↺ Resetar</button>
+        </div>
             <canvas id="grafico"></canvas>
         </div>
 
@@ -395,13 +397,13 @@
                             },
                             zoom: {
                                 zoom: {
-                                    wheel: { enabled: true },
-                                    pinch: { enabled: true },
-                                    mode: 'xy'
+                                    wheel: { enabled: !ehMobile },
+                                    pinch: { enabled: !ehMobile },
+                                    mode: 'x'
                                 },
                                 pan: {
                                     enabled: true,
-                                    mode: 'xy'
+                                    mode: 'x'
                                 }
                             }
                         },
@@ -434,11 +436,15 @@
                     }
                 });
 
-                // Botão resetar zoom
+                // Botões de zoom e reset
+                document.getElementById('btnZoomMais').onclick = function () {
+                    if (chart) chart.zoom(1.3);
+                };
+                document.getElementById('btnZoomMenos').onclick = function () {
+                    if (chart) chart.zoom(0.77);
+                };
                 document.getElementById('btnResetZoom').onclick = function () {
-                    if (chart) {
-                        chart.resetZoom();
-                    }
+                    if (chart) chart.resetZoom();
                 };
 
             } catch (error) {

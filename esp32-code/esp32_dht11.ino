@@ -1,51 +1,41 @@
 // ========================================
-// MONITOR DE TEMPERATURA - ESP32-S3 + DHT11/DHT22
+// MONITOR DE CASA - ESP32-S3
+// DHT11/22 + Som + Ultrassonico + Buzzer
 // ========================================
 
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <DHT.h>
-#include "esp_task_wdt.h"
 
+// === WIFI E SERVIDOR ===
 const char* WIFI_SSID = "Mateus";
 const char* WIFI_PASSWORD = "mateus2000";
 const char* API_URL = "https://home-monitor-backend.onrender.com/api/temperatura";
 const char* API_KEY = "1";
 const char* BUZZER_URL = "https://home-monitor-backend.onrender.com/api/buzzer";
 
+// === PINOS ===
 #define DHTPIN 4
-#define DHTTYPE DHT11
+#define DHTTYPE DHT11     // DHT11 ou DHT22
 #define SOM_PIN 5
-#define SOM_LIMITE_ALERTA 300
 #define BUZZER_PIN 12
+#define TRIG_PIN 15       // Ultrassonico Trig
+#define ECHO_PIN 16       // Ultrassonico Echo
 
 DHT dht(DHTPIN, DHTTYPE);
 
-const unsigned long INTERVALO_SOM = 1500;
-const unsigned long INTERVALO_DHT = 10000;
-const unsigned long INTERVALO_KEEPALIVE = 30000;
-const unsigned long INTERVALO_BUZZER = 5000;
-const unsigned long INTERVALO_WIFI = 5000;
+// === LIMITES ===
+#define SOM_LIMITE_ALERTA 300
+#define MOVIMENTO_TOLERANCIA 5    // cm
 
-const float VAR_TEMP = 0.1;
-const float VAR_UMID = 0.5;
-const int   VAR_SOM = 10;
+// === INTERVALOS (ms) ===
+#define INTERVALO_SOM 1500
+#define INTERVALO_DHT 10000
+#define INTERVALO_KEEPALIVE 30000
+#define INTERVALO_BUZZER 5000
+#define INTERVALO_MOVIMENTO 500
 
-float ultTempEnviada = -999;
-float ultUmidEnviada = -999;
-int   ultSomEnviado = -999;
-float ultTempLida = -999;
-float ultUmidLida = -999;
-
-unsigned long timerSom = 0;
-unsigned long timerDHT = 0;
-unsigned long timerKeepAlive = 0;
-unsigned long timerBuzzer = 0;
-unsigned long timerWifi = 0;
-unsigned long ultimoAtividade = 0;
-
-bool buzzerLigado = false;
-
+// === SENSOR DE SOM ===
 int lerNivelSom() {
   int maximo = 0;
   unsigned long fim = millis() + 50;
@@ -55,6 +45,36 @@ int lerNivelSom() {
   }
   return maximo;
 }
+
+// === SENSOR ULTRASSONICO (HC-SR04) ===
+long lerDistancia() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  long duracao = pulseIn(ECHO_PIN, HIGH, 20000);
+  if (duracao == 0) return -1;
+  return duracao * 0.0343 / 2;
+}
+
+long lerDistanciaMedia() {
+  long soma = 0;
+  int validas = 0;
+  for (int i = 0; i < 5; i++) {
+    long d = lerDistancia();
+    if (d > 0) { soma += d; validas++; }
+    delay(50);
+  }
+  return (validas > 0) ? (soma / validas) : 30;
+}
+
+// === SENSOR DHT ===
+float ultTempEnviada = -999;
+float ultUmidEnviada = -999;
+int   ultSomEnviado = -999;
+float ultTempLida = -999;
+float ultUmidLida = -999;
 
 bool lerDHT() {
   float t = dht.readTemperature();
@@ -67,6 +87,22 @@ bool lerDHT() {
   return false;
 }
 
+// === ULTRASSONICO - ESTADO ===
+long distanciaBase = 0;
+bool movimentoDetectado = false;
+
+// === TIMERS ===
+unsigned long timerSom = 0;
+unsigned long timerDHT = 0;
+unsigned long timerKeepAlive = 0;
+unsigned long timerBuzzer = 0;
+unsigned long timerMovimento = 0;
+unsigned long timerWifi = 0;
+unsigned long ultimoAtividade = 0;
+
+bool buzzerLigado = false;
+
+// === ENVIAR DADOS AO SERVIDOR ===
 void enviarDados() {
   float temperatura = ultTempLida;
   float umidade = ultUmidLida;
@@ -81,10 +117,12 @@ void enviarDados() {
 
   int nivelSom = lerNivelSom();
   Serial.printf("Som: %d (limite: %d)\n", nivelSom, SOM_LIMITE_ALERTA);
+  Serial.printf("Movimento: %s\n", movimentoDetectado ? "SIM" : "NAO");
 
   String json = "{\"temperatura\":" + String(temperatura, 1) +
                 ",\"umidade\":" + String(umidade, 1) +
-                ",\"som\":" + String(nivelSom) + "}";
+                ",\"som\":" + String(nivelSom) +
+                ",\"movimento\":" + String(movimentoDetectado ? "true" : "false") + "}";
 
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi off - pulando envio");
@@ -112,6 +150,7 @@ void enviarDados() {
   ultimoAtividade = millis();
 }
 
+// === CONSULTA BUZZER ===
 void consultarBuzzer() {
   if (WiFi.status() != WL_CONNECTED) return;
 
@@ -129,21 +168,22 @@ void consultarBuzzer() {
   http.end();
 }
 
+// === SETUP ===
 void setup() {
   Serial.begin(115200);
 
-  // *** DESATIVA O WATCHDOG DO WIFI ***
-  // O WiFi roda no Core 1 e o HTTPClient bloqueia o loop,
-  // causando crash. Desativamos o TWDT do loop task.
-  esp_task_wdt_delete(NULL);
-
-  Serial.println("\n=== MONITOR DE TEMPERATURA ===");
-  Serial.printf("Sensor: GPIO%d\n", DHTPIN);
-  Serial.println("VCC->3.3V  DATA->GPIO4  GND->GND");
+  Serial.println("\n=== MONITOR DE CASA ===");
+  Serial.println("Sensores: DHT + Som + Ultrassonico + Buzzer");
+  Serial.printf("DHT: GPIO%d | Som: GPIO%d | Buzzer: GPIO%d\n", DHTPIN, SOM_PIN, BUZZER_PIN);
+  Serial.printf("Ultrassonico: Trig=GPIO%d Echo=GPIO%d\n", TRIG_PIN, ECHO_PIN);
 
   dht.begin();
+
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -161,46 +201,52 @@ void setup() {
     Serial.println("\nWiFi falhou - tentara no loop");
   }
 
+  // CALIBRACAO DO ULTRASSONICO
+  Serial.println("\nCalibrando sensor de movimento...");
+  Serial.println("Nao ha ninguem na frente do sensor!");
+  delay(2000);
+  distanciaBase = lerDistanciaMedia();
+  Serial.printf("Distancia base calibrada: %ld cm\n", distanciaBase);
+  Serial.println("Monitoramento iniciado!\n");
+
   ultimoAtividade = millis();
-  Serial.println("=== Iniciando monitoramento ===");
 }
 
+// === LOOP ===
 void loop() {
   unsigned long agora = millis();
 
-  // ---- WiFi: reconecta se caiu ----
-  if (WiFi.status() != WL_CONNECTED && (agora - timerWifi > INTERVALO_WIFI)) {
+  // WiFi reconexao
+  if (WiFi.status() != WL_CONNECTED && (agora - timerWifi > 5000)) {
     timerWifi = agora;
     WiFi.disconnect();
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   }
 
-  // Watchdog proprio: reinicia se 5 minutos sem enviar nada
+  // Watchdog: 5 min sem enviar = reinicia
   if (agora - ultimoAtividade > 300000) {
     Serial.println(">> 5 min sem atividade - reiniciando");
     ESP.restart();
   }
 
-  // ---- Som: a cada 1.5s ----
+  // Som: a cada 1.5s
   if (agora - timerSom >= INTERVALO_SOM) {
     timerSom = agora;
     int som = lerNivelSom();
-    if (abs(som - ultSomEnviado) >= VAR_SOM) {
+    if (abs(som - ultSomEnviado) >= 10) {
       Serial.printf("Som: %d -> %d\n", ultSomEnviado, som);
       ultSomEnviado = som;
       enviarDados();
     }
   }
 
-  // ---- DHT: a cada 10s ----
+  // DHT: a cada 10s
   if (agora - timerDHT >= INTERVALO_DHT) {
     timerDHT = agora;
     if (lerDHT()) {
       float t = ultTempLida;
       float u = ultUmidLida;
-      bool mudouT = fabs(t - ultTempEnviada) >= VAR_TEMP;
-      bool mudouU = fabs(u - ultUmidEnviada) >= VAR_UMID;
-      if (mudouT || mudouU) {
+      if (fabs(t - ultTempEnviada) >= 0.1 || fabs(u - ultUmidEnviada) >= 0.5) {
         Serial.printf("DHT: %.1fC / %.1f%%\n", t, u);
         enviarDados();
       }
@@ -209,19 +255,39 @@ void loop() {
     }
   }
 
-  // ---- Keep-alive: a cada 30s ----
+  // Ultrassonico: a cada 0.5s
+  if (agora - timerMovimento >= INTERVALO_MOVIMENTO) {
+    timerMovimento = agora;
+    long dist = lerDistancia();
+    if (dist > 0) {
+      long diferenca = abs(dist - distanciaBase);
+      bool movimentoNovo = (diferenca >= MOVIMENTO_TOLERANCIA);
+
+      if (movimentoNovo != movimentoDetectado) {
+        movimentoDetectado = movimentoNovo;
+        if (movimentoDetectado) {
+          Serial.printf(">> MOVIMENTO! Dist: %ld cm (base: %ld)\n", dist, distanciaBase);
+        } else {
+          Serial.printf(">> Ambiente livre. Dist: %ld cm\n", dist);
+        }
+        enviarDados();
+      }
+    }
+  }
+
+  // Keep-alive: a cada 30s
   if (agora - timerKeepAlive >= INTERVALO_KEEPALIVE) {
     timerKeepAlive = agora;
     enviarDados();
   }
 
-  // ---- Buzzer: a cada 5s ----
+  // Buzzer: a cada 5s
   if (agora - timerBuzzer >= INTERVALO_BUZZER) {
     timerBuzzer = agora;
     consultarBuzzer();
   }
 
-  // ---- Controle do buzzer ----
+  // Controle do buzzer
   if (buzzerLigado) {
     ledcAttach(BUZZER_PIN, 3000, 8);
     ledcWrite(BUZZER_PIN, 240);

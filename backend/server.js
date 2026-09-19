@@ -92,24 +92,32 @@ app.post('/api/login', (req, res) => {
 // POST /api/temperatura
 // ========================================
 app.post('/api/temperatura', autenticar, async (req, res) => {
-  const { temperatura, umidade, som } = req.body;
+  const { temperatura, umidade, som, movimento } = req.body;
 
-  if (temperatura === undefined || umidade === undefined) {
-    return res.status(400).json({ erro: 'Campos temperatura e umidade são obrigatórios' });
+  // Aceita sem temperatura/umidade (quando sensor DHT retorna NaN)
+  // Mas pelo menos um campo deve existir
+  if (temperatura === undefined && umidade === undefined && som === undefined && movimento === undefined) {
+    return res.status(400).json({ erro: 'Pelo menos um campo e necessario (temperatura, umidade, som, movimento)' });
   }
 
   try {
+    const leitura = {
+      local: 'quarto',
+      criado_em: new Date().toISOString()
+    };
+
+    if (temperatura !== undefined && !isNaN(parseFloat(temperatura))) {
+      leitura.temperatura = parseFloat(temperatura);
+    }
+    if (umidade !== undefined && !isNaN(parseFloat(umidade))) {
+      leitura.umidade = parseFloat(umidade);
+    }
+    leitura.som = som !== undefined ? parseInt(som) : 0;
+    leitura.movimento = movimento === true || movimento === 'true';
+
     const { data, error } = await supabase
       .from('leituras')
-      .insert([
-        {
-          temperatura: parseFloat(temperatura),
-          umidade: parseFloat(umidade),
-          som: som !== undefined ? parseInt(som) : 0,
-          local: 'quarto',
-          criado_em: new Date().toISOString()
-        }
-      ]);
+      .insert([leitura]);
 
     if (error) throw error;
 

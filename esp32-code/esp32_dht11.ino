@@ -21,8 +21,8 @@ const char* RECALIBRAR_DONE_URL = "https://home-monitor-backend.onrender.com/api
 #define DHTTYPE DHT11
 #define SOM_PIN 5
 #define BUZZER_PIN 12
-#define TRIG_PIN 6        // Ultrassonico Trig
-#define ECHO_PIN 7        // Ultrassonico Echo
+#define TRIG_PIN 3        // Ultrassonico Trig -> GPIO3 (lado esquerdo, funciona normal)
+#define ECHO_PIN 7        // Ultrassonico Echo -> GPIO7 (lado esquerdo)
 
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -119,8 +119,7 @@ void calibrarSensor() {
 
   if (distanciaBase <= 0) {
     Serial.println(">> FALHA NA CALIBRACAO! Sensor nao respondeu.");
-    Serial.println(">> Verifique: Trig->GPIO6, Echo->GPIO7, VCC->5V, GND->GND");
-    Serial.println(">> Se GPIO6 nao funcionar, troque Trig para GPIO15.");
+    Serial.println(">> Verifique: Trig->GPIO3, Echo->GPIO7, VCC->5V, GND->GND");
   } else {
     Serial.printf(">> Calibracao OK! Distancia base: %ld cm\n", distanciaBase);
   }

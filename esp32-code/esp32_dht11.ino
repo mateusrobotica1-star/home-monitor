@@ -151,9 +151,32 @@ void setup() {
   delay(500);
 
   Serial.println("\n=== MONITOR DE TEMPERATURA ESP32-S3 ===");
-  Serial.println("Configurando sensor DHT11...");
+  Serial.print("Sensor: ");
+  #if DHTTYPE == DHT11
+    Serial.println("DHT11 (resolucao 1°C, precisao +-2°C)");
+  #else
+    Serial.println("DHT22 (resolucao 0.1°C, precisao +-0.5°C)");
+  #endif
+  Serial.printf("Pino do sensor: GPIO%d\n", DHTPIN);
+  Serial.println("Cabos esperados: VCC->3.3V, DATA->GPIO4, GND->GND");
+  Serial.println("Se DATA solto ou invertido = NaN!");
+  Serial.println("Configurando sensor...");
   dht.begin();
-  delay(500);
+  delay(2000); // espera o sensor estabilizar
+
+  // Leitura teste para diagnosticar o sensor
+  float tTeste = dht.readTemperature();
+  float uTeste = dht.readHumidity();
+  if (isnan(tTeste) || isnan(uTeste)) {
+    Serial.println(">> ALERTA: Sensor NAO respondeu na inicializacao!");
+    Serial.println(">> Causas possiveis:");
+    Serial.println(">>  1. Fio de dados NAO conectado ao GPIO4");
+    Serial.println(">>  2. Sensor invertido (VCC e GND trocados)");
+    Serial.println(">>  3. Sensor com defeito");
+    Serial.println(">>  4. Falta resistor pull-up (4.7k entre DATA e VCC)");
+  } else {
+    Serial.printf(">> Sensor OK! Leitura: %.1fC / %.1f%%\n", tTeste, uTeste);
+  }
 
   // Configura o pino do buzzer como saída (começa desligado)
   pinMode(BUZZER_PIN, OUTPUT);
@@ -271,20 +294,34 @@ void lerEAtualizarReferencia() {
   ultSomEnviado = ultSomLido;
 }
 
-// Lê o DHT11 respeitando o intervalo mínimo (>= 1.5s) para não travar a leitura
+// Lê o DHT respeitando intervalo mínimo de 2s e tenta duas vezes
+// (DHT11 as vezes retorna nan na primeira leitura)
 bool lerDHTComGuarda() {
   unsigned long agora = millis();
-  if (agora - ultimoLeituraDHT < 1500) {
+  if (agora - ultimoLeituraDHT < 2500) {
     return false; // ainda muito cedo para reler
   }
   ultimoLeituraDHT = agora;
+
   float t = dht.readTemperature();
   float u = dht.readHumidity();
+
+  // Se deu nan, espera 2s e tenta de novo (DHT11 precisa de tempo)
+  if (isnan(t) || isnan(u)) {
+    Serial.println(">> DHT: primeira leitura NaN, tentando de novo em 2s...");
+    delay(2000);
+    t = dht.readTemperature();
+    u = dht.readHumidity();
+  }
+
   if (!isnan(t) && !isnan(u)) {
     ultTempLida = t;
     ultUmidLida = u;
+    Serial.printf("DHT OK: %.1fC / %.1f%%\n", t, u);
     return true;
   }
+
+  Serial.println(">> AVISO: DHT ainda NaN! Verifique cabos: dados=GPIO4, VCC=3.3V, GND=GND");
   return false;
 }
 

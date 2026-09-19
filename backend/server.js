@@ -246,6 +246,72 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', servidor: 'Monitor Casa', horario: now });
 });
 
+// ========================================
+// ROTA: Recalibrar sensor ultrassonico
+// POST /api/recalibrar (site -> seta pendente)
+// GET  /api/recalibrar (ESP32 -> checa se esta pendente)
+// POST /api/recalibrar/done (ESP32 -> confirma que recalibrou)
+// GET  /api/distancia-base (site -> mostra distancia calibrada)
+// ========================================
+
+// Site pede recalibracao
+app.post('/api/recalibrar', exigirToken, async (req, res) => {
+  try {
+    await supabase.from('config').upsert({
+      chave: 'recalibrar',
+      valor: 1,
+      atualizado_em: new Date().toISOString()
+    }, { onConflict: 'chave' });
+    res.json({ pendente: true, mensagem: 'Recalibracao solicitada' });
+  } catch (error) {
+    console.error('Erro ao solicitar recalibracao:', error.message);
+    res.status(500).json({ erro: 'Erro ao solicitar recalibracao' });
+  }
+});
+
+// ESP32 checa se tem recalibracao pendente
+app.get('/api/recalibrar', autenticar, async (req, res) => {
+  try {
+    const { data } = await supabase
+      .from('config')
+      .select('valor')
+      .eq('chave', 'recalibrar')
+      .maybeSingle();
+    res.json({ pendente: data ? data.valor === 1 : false });
+  } catch (error) {
+    res.json({ pendente: false });
+  }
+});
+
+// ESP32 confirma que recalibrou e envia a nova distancia
+app.post('/api/recalibrar/done', autenticar, async (req, res) => {
+  const { distancia } = req.body;
+  try {
+    await supabase.from('config').upsert([
+      { chave: 'recalibrar', valor: 0, atualizado_em: new Date().toISOString() },
+      { chave: 'distancia_base', valor: distancia || 0, atualizado_em: new Date().toISOString() }
+    ], { onConflict: 'chave' });
+    res.json({ ok: true, distancia: distancia });
+  } catch (error) {
+    console.error('Erro ao confirmar recalibracao:', error.message);
+    res.status(500).json({ erro: 'Erro ao confirmar recalibracao' });
+  }
+});
+
+// Site consulta distancia calibrada
+app.get('/api/distancia-base', exigirToken, async (req, res) => {
+  try {
+    const { data } = await supabase
+      .from('config')
+      .select('valor')
+      .eq('chave', 'distancia_base')
+      .maybeSingle();
+    res.json({ distancia: data ? data.valor : 0 });
+  } catch (error) {
+    res.json({ distancia: 0 });
+  }
+});
+
 // Rota principal (raiz)
 app.get('/', (req, res) => {
   res.json({
@@ -254,11 +320,13 @@ app.get('/', (req, res) => {
       { metodo: 'POST', caminho: '/api/temperatura', descricao: 'Recebe dados do ESP32 (x-api-key)' },
       { metodo: 'POST', caminho: '/api/login', descricao: 'Login do site - retorna token' },
       { metodo: 'GET', caminho: '/api/leituras?data=2026-01-15', descricao: 'Busca leituras por dia (Bearer token)' },
-      { metodo: 'GET', caminho: '/api/leituras?limite=10', descricao: 'Busca últimas leituras (Bearer token)' },
-      { metodo: 'GET', caminho: '/api/temperatura/atual', descricao: 'Última leitura registrada (Bearer token)' },
+      { metodo: 'GET', caminho: '/api/temperatura/atual', descricao: 'Ultima leitura (Bearer token)' },
       { metodo: 'GET', caminho: '/api/buzzer', descricao: 'Estado do buzzer (ESP32, x-api-key)' },
       { metodo: 'POST', caminho: '/api/buzzer', descricao: 'Liga/desliga buzzer (Bearer token)' },
-      { metodo: 'GET', caminho: '/health', descricao: 'Verifica se está online' }
+      { metodo: 'POST', caminho: '/api/recalibrar', descricao: 'Solicita recalibracao (Bearer token)' },
+      { metodo: 'GET', caminho: '/api/recalibrar', descricao: 'Checa recalibracao pendente (ESP32, x-api-key)' },
+      { metodo: 'GET', caminho: '/api/distancia-base', descricao: 'Distancia calibrada (Bearer token)' },
+      { metodo: 'GET', caminho: '/health', descricao: 'Verifica se esta online' }
     ]
   });
 });

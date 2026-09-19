@@ -13,14 +13,16 @@ const char* WIFI_PASSWORD = "mateus2000";
 const char* API_URL = "https://home-monitor-backend.onrender.com/api/temperatura";
 const char* API_KEY = "1";
 const char* BUZZER_URL = "https://home-monitor-backend.onrender.com/api/buzzer";
+const char* RECALIBRAR_URL = "https://home-monitor-backend.onrender.com/api/recalibrar";
+const char* RECALIBRAR_DONE_URL = "https://home-monitor-backend.onrender.com/api/recalibrar/done";
 
 // === PINOS ===
 #define DHTPIN 4
-#define DHTTYPE DHT11     // DHT11 ou DHT22
+#define DHTTYPE DHT11
 #define SOM_PIN 5
 #define BUZZER_PIN 12
-#define TRIG_PIN 6        // Ultrassonico Trig -> GPIO6 (cuidado: pino de flash, pode nao funcionar)
-#define ECHO_PIN 7        // Ultrassonico Echo -> GPIO7
+#define TRIG_PIN 6        // Ultrassonico Trig
+#define ECHO_PIN 7        // Ultrassonico Echo
 
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -63,10 +65,15 @@ long lerDistanciaMedia() {
   int validas = 0;
   for (int i = 0; i < 5; i++) {
     long d = lerDistancia();
+    Serial.printf("  Leitura %d: %ld cm\n", i + 1, d);
     if (d > 0) { soma += d; validas++; }
     delay(50);
   }
-  return (validas > 0) ? (soma / validas) : 30;
+  if (validas == 0) {
+    Serial.println("  NENHUMA leitura valida! Sensor desconectado ou pinos errados.");
+    return -1;  // retorna -1 ao inves de 30 para diagnosticar
+  }
+  return soma / validas;
 }
 
 // === SENSOR DHT ===
@@ -88,7 +95,7 @@ bool lerDHT() {
 }
 
 // === ULTRASSONICO - ESTADO ===
-long distanciaBase = 0;
+long distanciaBase = -1;    // -1 = nao calibrado
 bool movimentoDetectado = false;
 
 // === TIMERS ===
@@ -101,6 +108,59 @@ unsigned long timerWifi = 0;
 unsigned long ultimoAtividade = 0;
 
 bool buzzerLigado = false;
+
+// === CALIBRAR SENSOR ===
+void calibrarSensor() {
+  Serial.println("\n>>> CALIBRANDO SENSOR DE MOVIMENTO <<<");
+  Serial.println("Certifique-se que NAO ha ninguem na frente do sensor!");
+  delay(2000);
+
+  distanciaBase = lerDistanciaMedia();
+
+  if (distanciaBase <= 0) {
+    Serial.println(">> FALHA NA CALIBRACAO! Sensor nao respondeu.");
+    Serial.println(">> Verifique: Trig->GPIO6, Echo->GPIO7, VCC->5V, GND->GND");
+    Serial.println(">> Se GPIO6 nao funcionar, troque Trig para GPIO15.");
+  } else {
+    Serial.printf(">> Calibracao OK! Distancia base: %ld cm\n", distanciaBase);
+  }
+
+  // Envia distancia base pro servidor
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.setTimeout(15000);
+    http.begin(RECALIBRAR_DONE_URL);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("x-api-key", API_KEY);
+    String json = "{\"distancia\":" + String(distanciaBase) + "}";
+    int httpCode = http.POST(json);
+    if (httpCode == 200 || httpCode == 201) {
+      Serial.println(">> Distancia base enviada ao servidor!");
+    }
+    http.end();
+  }
+}
+
+// === CONSULTAR RECALIBRAR ===
+void consultarRecalibrar() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  HTTPClient http;
+  http.setTimeout(10000);
+  http.begin(RECALIBRAR_URL);
+  http.addHeader("x-api-key", API_KEY);
+
+  int httpCode = http.GET();
+  if (httpCode == 200) {
+    String resp = http.getString();
+    if (resp.indexOf("\"pendente\":true") >= 0) {
+      Serial.println("\n>> Servidor pediu RECALIBRACAO!");
+      calibrarSensor();
+      return;
+    }
+  }
+  http.end();
+}
 
 // === ENVIAR DADOS AO SERVIDOR ===
 void enviarDados() {
@@ -117,6 +177,17 @@ void enviarDados() {
 
   int nivelSom = lerNivelSom();
   Serial.printf("Som: %d (limite: %d)\n", nivelSom, SOM_LIMITE_ALERTA);
+
+  // Le distancia atual para mostrar no serial
+  long distAtual = lerDistancia();
+  if (distAtual > 0 && distanciaBase > 0) {
+    long diff = abs(distAtual - distanciaBase);
+    Serial.printf("Dist: %ld cm (base: %ld, diff: %ld, limite: %d)\n",
+                  distAtual, distanciaBase, diff, MOVIMENTO_TOLERANCIA);
+  } else if (distAtual <= 0) {
+    Serial.println("Dist: ERRO (sensor nao responde)");
+  }
+
   Serial.printf("Movimento: %s\n", movimentoDetectado ? "SIM" : "NAO");
 
   String json = "{\"temperatura\":" + String(temperatura, 1) +
@@ -201,15 +272,11 @@ void setup() {
     Serial.println("\nWiFi falhou - tentara no loop");
   }
 
-  // CALIBRACAO DO ULTRASSONICO
-  Serial.println("\nCalibrando sensor de movimento...");
-  Serial.println("Nao ha ninguem na frente do sensor!");
-  delay(2000);
-  distanciaBase = lerDistanciaMedia();
-  Serial.printf("Distancia base calibrada: %ld cm\n", distanciaBase);
-  Serial.println("Monitoramento iniciado!\n");
+  // CALIBRACAO INICIAL DO ULTRASSONICO
+  calibrarSensor();
 
   ultimoAtividade = millis();
+  Serial.println("\n=== Monitoramento iniciado! ===\n");
 }
 
 // === LOOP ===
@@ -255,22 +322,32 @@ void loop() {
     }
   }
 
-  // Ultrassonico: a cada 0.5s
+  // Ultrassonico (movimento): a cada 0.5s
   if (agora - timerMovimento >= INTERVALO_MOVIMENTO) {
     timerMovimento = agora;
-    long dist = lerDistancia();
-    if (dist > 0) {
-      long diferenca = abs(dist - distanciaBase);
-      bool movimentoNovo = (diferenca >= MOVIMENTO_TOLERANCIA);
 
-      if (movimentoNovo != movimentoDetectado) {
-        movimentoDetectado = movimentoNovo;
-        if (movimentoDetectado) {
-          Serial.printf(">> MOVIMENTO! Dist: %ld cm (base: %ld)\n", dist, distanciaBase);
-        } else {
-          Serial.printf(">> Ambiente livre. Dist: %ld cm\n", dist);
+    // So detecta se calibracao OK
+    if (distanciaBase > 0) {
+      long dist = lerDistancia();
+      if (dist > 0) {
+        long diferenca = abs(dist - distanciaBase);
+        bool movimentoNovo = (diferenca >= MOVIMENTO_TOLERANCIA);
+        if (movimentoNovo != movimentoDetectado) {
+          movimentoDetectado = movimentoNovo;
+          if (movimentoDetectado) {
+            Serial.printf(">> MOVIMENTO! Dist: %ld cm (base: %ld)\n", dist, distanciaBase);
+          } else {
+            Serial.printf(">> Ambiente livre. Dist: %ld cm\n", dist);
+          }
+          enviarDados();
         }
-        enviarDados();
+      }
+    } else {
+      // Sensor nao calibrado - avisa a cada 10s
+      static unsigned long ultAviso = 0;
+      if (agora - ultAviso > 10000) {
+        ultAviso = agora;
+        Serial.println(">> Sensor nao calibrado! Calibre pelo site ou reinicie o ESP32.");
       }
     }
   }
@@ -285,6 +362,7 @@ void loop() {
   if (agora - timerBuzzer >= INTERVALO_BUZZER) {
     timerBuzzer = agora;
     consultarBuzzer();
+    consultarRecalibrar();  // checa se site pediu recalibracao
   }
 
   // Controle do buzzer

@@ -238,6 +238,11 @@
                 <div class="label">Movimento</div>
                 <div class="value" style="font-size: 24px;"><span id="movimento">--</span></div>
             </div>
+            <div class="card" id="cardParede">
+                <div class="icon">🧱</div>
+                <div class="label">Parede</div>
+                <div class="value" style="font-size: 22px;"><span id="distanciaBase">--</span><span class="unit" id="distanciaUnit"></span></div>
+            </div>
         </div>
 
         <div class="update-info" id="updateInfo">Aguardando atualização...</div>
@@ -251,6 +256,9 @@
             <div class="control-group buzzer">
                 <span id="buzzerLabel">Buzzer:</span>
                 <button id="btnBuzzer" title="Ligar/desligar o buzzer" style="min-width:120px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);color:#fff;border-radius:20px;padding:8px 16px;cursor:pointer;font-size:14px;font-weight:700;">🔕 Desligado</button>
+            </div>
+            <div class="control-group">
+                <button id="btnRecalibrar" title="Recalibrar sensor de movimento" style="background:rgba(255,152,0,0.15);border:1px solid rgba(255,152,0,0.4);color:#ff9800;border-radius:20px;padding:8px 16px;cursor:pointer;font-size:14px;font-weight:700;">🔄 Recalibrar</button>
             </div>
         </div>
 
@@ -613,9 +621,11 @@ let historicoDados = null; // dados brutos carregados (usados p/ baixar gráfico
             buscarAtual();
             buscarHistorico();
             buscarBuzzer();
+            buscarDistanciaBase();
             setInterval(buscarAtual, 5000);  // checa a cada 5s (status responde rapido)
             setInterval(buscarHistorico, INTERVALO_ATUALIZACAO * 2);
             setInterval(buscarBuzzer, 10000); // sincroniza estado do buzzer
+            setInterval(buscarDistanciaBase, 15000); // checa distancia base
 
             // Seletor de dia: muda o gráfico
             document.getElementById('seletorDia').addEventListener('change', function (e) {
@@ -635,6 +645,11 @@ let historicoDados = null; // dados brutos carregados (usados p/ baixar gráfico
             document.getElementById('btnBuzzer').onclick = function () {
                 const novoEstado = !estadoBuzzer;
                 setEstadoBuzzer(novoEstado);
+            };
+
+            // Botão recalibrar sensor de movimento
+            document.getElementById('btnRecalibrar').onclick = function () {
+                recalibrarSensor();
             };
         }
 
@@ -686,6 +701,58 @@ let historicoDados = null; // dados brutos carregados (usados p/ baixar gráfico
                 btn.textContent = '🔕 Desligado';
                 btn.style.background = 'rgba(255,255,255,0.1)';
                 btn.style.borderColor = 'rgba(255,255,255,0.25)';
+            }
+        }
+
+        // ===== DISTANCIA BASE (PAREDE) =====
+        async function buscarDistanciaBase() {
+            try {
+                const res = await fetch(`${API_URL}/distancia-base`, { headers: cabAutorizacao() });
+                if (!res.ok) throw new Error('Erro');
+                const d = await res.json();
+                const distEl = document.getElementById('distanciaBase');
+                const unitEl = document.getElementById('distanciaUnit');
+                const cardParede = document.getElementById('cardParede');
+                if (d.distancia > 0) {
+                    distEl.textContent = d.distancia;
+                    unitEl.textContent = ' cm';
+                    distEl.style.color = '#4caf50';
+                    cardParede.style.borderColor = 'rgba(76,175,80,0.4)';
+                } else {
+                    distEl.textContent = 'Nao calibrado';
+                    unitEl.textContent = '';
+                    distEl.style.color = '#ff9800';
+                    cardParede.style.borderColor = 'rgba(255,152,0,0.4)';
+                }
+            } catch (error) {
+                console.error('Erro ao buscar distancia:', error);
+            }
+        }
+
+        // ===== RECALIBRAR SENSOR =====
+        async function recalibrarSensor() {
+            const btn = document.getElementById('btnRecalibrar');
+            btn.disabled = true;
+            btn.textContent = '⏳ Calibrando...';
+            btn.style.background = 'rgba(255,152,0,0.3)';
+            try {
+                const res = await fetch(`${API_URL}/recalibrar`, {
+                    method: 'POST',
+                    headers: cabAutorizacao()
+                });
+                if (!res.ok) throw new Error('Erro');
+                // Espera 5s para o ESP32 calibrar e enviar a nova distancia
+                setTimeout(() => {
+                    buscarDistanciaBase();
+                    btn.textContent = '🔄 Recalibrar';
+                    btn.style.background = 'rgba(255,152,0,0.15)';
+                    btn.disabled = false;
+                }, 8000);
+            } catch (error) {
+                console.error('Erro ao recalibrar:', error);
+                btn.textContent = '🔄 Recalibrar';
+                btn.style.background = 'rgba(255,152,0,0.15)';
+                btn.disabled = false;
             }
         }
 

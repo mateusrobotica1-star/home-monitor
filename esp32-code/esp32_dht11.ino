@@ -182,7 +182,7 @@ void setup() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("\nWiFi OK - IP: %s\n", WiFi.localIP().c_str());
+    Serial.printf("\nWiFi OK - IP: %s\n", WiFi.localIP().toString().c_str());
   } else {
     Serial.println("\nWiFi falhou - tentara no loop");
   }

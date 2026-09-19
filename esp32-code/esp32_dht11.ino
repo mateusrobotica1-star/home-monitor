@@ -19,8 +19,8 @@ const char* BUZZER_URL = "https://home-monitor-backend.onrender.com/api/buzzer";
 #define DHTTYPE DHT11     // DHT11 ou DHT22
 #define SOM_PIN 5
 #define BUZZER_PIN 12
-#define TRIG_PIN 15       // Ultrassonico Trig
-#define ECHO_PIN 16       // Ultrassonico Echo
+#define TRIG_PIN 6        // Ultrassonico Trig -> GPIO6 (cuidado: pino de flash, pode nao funcionar)
+#define ECHO_PIN 7        // Ultrassonico Echo -> GPIO7
 
 DHT dht(DHTPIN, DHTTYPE);
 

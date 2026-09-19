@@ -1,450 +1,264 @@
 // ========================================
-// MONITOR DE TEMPERATURA - ESP32-S3 + DHT11
+// MONITOR DE TEMPERATURA - ESP32-S3 + DHT11/DHT22
 // Envia dados para o backend hospedado na Render
 // ========================================
+// IMPORTANTE: este codigo NAO usa delay() no loop.
+// Tudo eh controlado por millis() para nao travar o WiFi.
 
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <DHT.h>
-#include <math.h>
-#include <stdlib.h>
 
-// Usa a porta USB nativa do ESP32-S3 para debug
-#if defined(ARDUINO_USB_CDC_ON_BOOT)
-  #define DEBUG_SERIAL Serial
-#else
-  #define DEBUG_SERIAL Serial
-#endif
-
-// CONFIGURAÇÕES DO WIFI - ALTERE AQUI!
+// CONFIGURACOES DO WIFI
 const char* WIFI_SSID = "Mateus";
 const char* WIFI_PASSWORD = "mateus2000";
 
-// URL DO SEU BACKEND NA RENDER - JÁ APONTA PARA O SEU!
+// URL DO BACKEND NA RENDER
 const char* API_URL = "https://home-monitor-backend.onrender.com/api/temperatura";
 
-// SENHA/TOKEN PARA PROTEGER O ENDPOINT - USE A MESMA DA RENDER!
+// API KEY
 const char* API_KEY = "1";
 
-// Pin do sensor de temperatura (default GPIO4 no ESP32-S3)
+// Pin do sensor de temperatura
 #define DHTPIN 4
-
-// === TIPO DE SENSOR ===
-// DHT11 = modelo barato (resolucao 1°C, precisao +-2°C, responde mal ao calor)
-// DHT22 = modelo bom   (resolucao 0.1°C, precisao +-0.5°C, responde bem ao calor)
-// Se esteve preso em 14.x com calor real, troque o sensor p/ DHT22 e mude a linha:
-#define DHTTYPE DHT22   // <-- troque DHT22 por DHT11 se for usar o sensor antigo
+// DHT11 ou DHT22 - troque aqui se precisar
+#define DHTTYPE DHT11
 
 // Pino do som
 #define SOM_PIN 5
 
-// Limite de alerta de som (ajuste conforme sua sensibilidade)
-// Valores tipicos: silencio ~10-50, barulho alto ~200-1000+
+// Limite de alerta de som
 #define SOM_LIMITE_ALERTA 300
 
-// Pino do buzzer (GPIO12) - garante 3.3V de saída
-// (GPIO6 no ESP32-S3 e' pino de flash interna e nao sai 3.3V real)
+// Pino do buzzer
 #define BUZZER_PIN 12
 
-// URL para consultar o estado do buzzer no servidor
+// URL do buzzer no servidor
 const char* BUZZER_URL = "https://home-monitor-backend.onrender.com/api/buzzer";
-
-// Intervalo (ms) de consulta do estado do buzzer
-const unsigned long CHECAR_BUZZER_INTERVALO = 5000;
 
 DHT dht(DHTPIN, DHTTYPE);
 
-// Função para medir o nível de som (0-4095)
-int lerNivelSom() {
-  int maxLeitura = 0;
-  // Amostra por 50ms para capturar picos de som
-  unsigned long fim = millis() + 50;
-  while (millis() < fim) {
-    int v = analogRead(SOM_PIN);
-    if (v > maxLeitura) {
-      maxLeitura = v;
-    }
-    delay(1);
-  }
-  return maxLeitura;
-}
+// Intervalos (millis)
+const unsigned long INTERVALO_SOM = 1500;
+const unsigned long INTERVALO_DHT = 10000;
+const unsigned long INTERVALO_KEEPALIVE = 30000;
+const unsigned long INTERVALO_BUZZER = 5000;
+const unsigned long INTERVALO_WIFI = 5000;
 
-// Intervalos de verificação
-const unsigned long CHECAR_SOM_INTERVALO = 1500;   // verifica som a cada 1,5s
-const unsigned long CHECAR_DHT_INTERVALO = 10000;  // verifica DHT11 a cada 10s
-const unsigned long AUTO_ENVIO_INTERVALO = 30000;  // envia sempre a cada 30s (keep-alive)
+// Variacao minima para enviar
+const float VAR_TEMP = 0.1;
+const float VAR_UMID = 0.5;
+const int   VAR_SOM = 10;
 
-// Limiar de variação para enviar imediatamente
-const float VAR_TEMP_LIMITE = 0.1;   // envia se temperatura mudar >= 0.1°C
-const float VAR_UMID_LIMITE = 0.5;   // envia se umidade mudar >= 0.5%
-const int   VAR_SOM_LIMITE = 10;     // envia se o som variar >= 10
-
-// Últimos valores enviados
+// Ultimos valores enviados
 float ultTempEnviada = -999;
 float ultUmidEnviada = -999;
 int   ultSomEnviado = -999;
 
-// Controle de tempo
-unsigned long ultimoCheckSom = 0;
-unsigned long ultimoCheckDHT = 0;
-unsigned long ultimoEnvioAutomatico = 0;
-
-// Para controle de reconexao e watchdog
-unsigned long ultimoChecWiFi = 0;
-unsigned long ultimoWiFiOk = 0;
-
-// Estado atual (mais recente lido)
+// Ultimos valores lidos
 float ultTempLida = -999;
 float ultUmidLida = -999;
-int   ultSomLido = 0;
 
-// Controle do buzzer
-unsigned long ultimoCheckBuzzer = 0;
+// Timers
+unsigned long timerSom = 0;
+unsigned long timerDHT = 0;
+unsigned long timerKeepAlive = 0;
+unsigned long timerBuzzer = 0;
+unsigned long timerWifi = 0;
+unsigned long timerInicio = 0;
+
+// Estado do buzzer
 bool buzzerLigado = false;
 
-// Controle de leitura do DHT11 (precisa de >= 1s entre leituras p/ não travar)
-unsigned long ultimoLeituraDHT = 0;
-
-// Protótipos das funções definidas mais abaixo (evita "was not declared in this scope")
-bool conectarWiFi();
-void lerEAtualizarReferencia();
-void enviarDados();
-void consultarBuzzer();
-bool lerDHTComGuarda();
-
-// FUNÇÃO: conecta ao WiFi tentando até conseguir (com limite)
-bool conectarWiFi() {
-  if (WiFi.status() == WL_CONNECTED) {
-    return true;
+// Leitura do som (rapida, ~50ms)
+int lerNivelSom() {
+  int maximo = 0;
+  unsigned long fim = millis() + 50;
+  while (millis() < fim) {
+    int v = analogRead(SOM_PIN);
+    if (v > maximo) maximo = v;
+    yield(); // alimenta o watchdog durante a leitura
   }
-
-  Serial.println("\n--- Conectando ao WiFi ---");
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  unsigned long inicio = millis();
-  // Tenta por até 30 segundos
-  while (WiFi.status() != WL_CONNECTED && millis() - inicio < 30000) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi conectado!");
-    Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
-    Serial.print("SSID: ");
-    Serial.println(WiFi.SSID());
-    Serial.print("Forca do sinal (RSSI): ");
-    Serial.print(WiFi.RSSI());
-    Serial.println(" dBm");
-    Serial.println("---------------------------------");
-    return true;
-  } else {
-    Serial.println("\nWiFi ainda nao disponivel - tentarei de novo.");
-    return false;
-  }
+  return maximo;
 }
 
-void setup() {
-  Serial.begin(115200);
-  delay(500);
-
-  Serial.println("\n=== MONITOR DE TEMPERATURA ESP32-S3 ===");
-  Serial.print("Sensor: ");
-  #if DHTTYPE == DHT11
-    Serial.println("DHT11 (resolucao 1°C, precisao +-2°C)");
-  #else
-    Serial.println("DHT22 (resolucao 0.1°C, precisao +-0.5°C)");
-  #endif
-  Serial.printf("Pino do sensor: GPIO%d\n", DHTPIN);
-  Serial.println("Cabos esperados: VCC->3.3V, DATA->GPIO4, GND->GND");
-  Serial.println("Se DATA solto ou invertido = NaN!");
-  Serial.println("Configurando sensor...");
-  dht.begin();
-  delay(2000); // espera o sensor estabilizar
-
-  // Leitura teste para diagnosticar o sensor
-  float tTeste = dht.readTemperature();
-  float uTeste = dht.readHumidity();
-  if (isnan(tTeste) || isnan(uTeste)) {
-    Serial.println(">> ALERTA: Sensor NAO respondeu na inicializacao!");
-    Serial.println(">> Causas possiveis:");
-    Serial.println(">>  1. Fio de dados NAO conectado ao GPIO4");
-    Serial.println(">>  2. Sensor invertido (VCC e GND trocados)");
-    Serial.println(">>  3. Sensor com defeito");
-    Serial.println(">>  4. Falta resistor pull-up (4.7k entre DATA e VCC)");
-  } else {
-    Serial.printf(">> Sensor OK! Leitura: %.1fC / %.1f%%\n", tTeste, uTeste);
-  }
-
-  // Configura o pino do buzzer como saída (começa desligado)
-  pinMode(BUZZER_PIN, OUTPUT);
-  digitalWrite(BUZZER_PIN, LOW);
-
-  Serial.print("SSID configurado: '");
-  Serial.print(WIFI_SSID);
-  Serial.println("'");
-
-  conectarWiFi();
-
-  // Envia uma leitura imediatamente ao ligar
-  if (WiFi.status() == WL_CONNECTED) {
-    delay(2000);
-    lerEAtualizarReferencia();
-    enviarDados();
-    consultarBuzzer();
-  }
-}
-
-void loop() {
-  unsigned long agora = millis();
-
-  // Atualiza o "último momento com WiFi ok" quando conectado
-  if (WiFi.status() == WL_CONNECTED) {
-    ultimoWiFiOk = agora;
-  }
-
-  // Verifica/reconecta o WiFi se caiu (a cada 5s)
-  if (WiFi.status() != WL_CONNECTED && (agora - ultimoChecWiFi > 5000)) {
-    ultimoChecWiFi = agora;
-    conectarWiFi();
-  }
-
-  // Watchdog: se ficar mais de 10 minutos sem WiFi, reinicia a placa
-  if (WiFi.status() != WL_CONNECTED && (agora - ultimoWiFiOk > 600000)) {
-    Serial.println(">> Sem WiFi por 10 min. Reiniciando o ESP32...");
-    delay(2000);
-    ESP.restart();
-  }
-
-  // ---- Verifica o som com frequência (quase instantâneo) ----
-  if (agora - ultimoCheckSom >= CHECAR_SOM_INTERVALO) {
-    ultimoCheckSom = agora;
-    int somAtual = lerNivelSom();
-    ultSomLido = somAtual;
-
-    // Se o som mudou o suficiente, envia imediatamente
-    if (abs(somAtual - ultSomEnviado) >= VAR_SOM_LIMITE) {
-      Serial.printf("Som mudou: %d -> %d. Enviando...\n", ultSomEnviado, somAtual);
-      enviarDados();
-      ultSomEnviado = somAtual;
-    }
-  }
-
-  // ---- Verifica o DHT11 com frequência menor (temp/umidade) ----
-  if (agora - ultimoCheckDHT >= CHECAR_DHT_INTERVALO) {
-    ultimoCheckDHT = agora;
-
-    // Lê com intervalo mínimo p/ não travar o sensor
-    if (lerDHTComGuarda()) {
-      float temp = ultTempLida;
-      float umid = ultUmidLida;
-
-      bool mudouTemp = fabs(temp - ultTempEnviada) >= VAR_TEMP_LIMITE;
-      bool mudouUmid = fabs(umid - ultUmidEnviada) >= VAR_UMID_LIMITE;
-
-      // Se algum valor mudou, envia imediatamente
-      if (mudouTemp || mudouUmid) {
-        Serial.printf("Temp/umid mudou: %.1fC/%.1f%%. Enviando...\n", temp, umid);
-        enviarDados();
-        ultTempEnviada = temp;
-        ultUmidEnviada = umid;
-      }
-    }
-  }
-
-  // ---- Envia periodicamente mesmo sem mudanças (keep-alive) ----
-  if (agora - ultimoEnvioAutomatico >= AUTO_ENVIO_INTERVALO) {
-    ultimoEnvioAutomatico = agora;
-    lerEAtualizarReferencia();
-    enviarDados();
-  }
-
-  // ---- Verifica o estado do buzzer no servidor (ligado/desligado) ----
-  if (agora - ultimoCheckBuzzer >= CHECAR_BUZZER_INTERVALO) {
-    ultimoCheckBuzzer = agora;
-    consultarBuzzer();
-  }
-
-  // ---- Controla o pino do buzzer conforme o estado do servidor ----
-  // Se "ligado" via botão do site, gera um tom contínuo no pino (barulho alto)
-  // enquanto o usuário não desligar no site
-  if (buzzerLigado) {
-    // Buzzer passivo: frequência 3kHz (ressonância típica) + duty bem alto
-    ledcAttach(BUZZER_PIN, 3000, 8);   // API nova ESP32: pino, frequencia, resolucao
-    ledcWrite(BUZZER_PIN, 240);        // duty 240/255 (94%) -> mais volume possivel
-  } else {
-    ledcDetach(BUZZER_PIN);
-    digitalWrite(BUZZER_PIN, LOW);
-  }
-
-  delay(200);
-}
-
-// Atualiza as referências (para não enviar por variação logo após o envio periódico)
-void lerEAtualizarReferencia() {
+// Ler DHT sem delay - retorna true se leu com sucesso
+bool lerDHT() {
   float t = dht.readTemperature();
   float u = dht.readHumidity();
-  if (!isnan(t)) ultTempLida = t;
-  if (!isnan(u)) ultUmidLida = u;
-  ultSomLido = lerNivelSom();
-  if (!isnan(ultTempLida)) ultTempEnviada = ultTempLida;
-  if (!isnan(ultUmidLida)) ultUmidEnviada = ultUmidLida;
-  ultSomEnviado = ultSomLido;
-}
-
-// Lê o DHT respeitando intervalo mínimo de 2s e tenta duas vezes
-// (DHT11 as vezes retorna nan na primeira leitura)
-bool lerDHTComGuarda() {
-  unsigned long agora = millis();
-  if (agora - ultimoLeituraDHT < 2500) {
-    return false; // ainda muito cedo para reler
-  }
-  ultimoLeituraDHT = agora;
-
-  float t = dht.readTemperature();
-  float u = dht.readHumidity();
-
-  // Se deu nan, espera 2s e tenta de novo (DHT11 precisa de tempo)
-  if (isnan(t) || isnan(u)) {
-    Serial.println(">> DHT: primeira leitura NaN, tentando de novo em 2s...");
-    delay(2000);
-    t = dht.readTemperature();
-    u = dht.readHumidity();
-  }
-
   if (!isnan(t) && !isnan(u)) {
     ultTempLida = t;
     ultUmidLida = u;
-    Serial.printf("DHT OK: %.1fC / %.1f%%\n", t, u);
     return true;
   }
-
-  Serial.println(">> AVISO: DHT ainda NaN! Verifique cabos: dados=GPIO4, VCC=3.3V, GND=GND");
   return false;
 }
 
+// Monta e envia JSON para o servidor
 void enviarDados() {
-  // Usa os valores mais recentes lidos
   float temperatura = ultTempLida;
   float umidade = ultUmidLida;
 
   Serial.println("\n=== Nova leitura ===");
-  Serial.printf("Temperatura: %.1f C | Umidade: %.1f%%\n", temperatura, umidade);
+  Serial.printf("Temp: %.1fC | Umid: %.1f%%\n", temperatura, umidade);
 
-  // Se o sensor não leu (nan), NÃO envia (evita JSON inválido e poluir o gráfico)
   if (isnan(temperatura) || isnan(umidade)) {
-    Serial.println(">> Sensor sem leitura valida (nan). PULANDO envio p/ nao gerar 400.");
+    Serial.println(">> Sensor NaN - pulando envio");
     return;
   }
 
-  // Lê o nível de som em tempo real
   int nivelSom = lerNivelSom();
-  ultSomLido = nivelSom;
-  Serial.printf("Nivel de som: %d (limite: %d)\n", nivelSom, SOM_LIMITE_ALERTA);
-  if (nivelSom > SOM_LIMITE_ALERTA) {
-    Serial.println(">> ALERTA: som alto detectado!");
-  }
+  Serial.printf("Som: %d (limite: %d)\n", nivelSom, SOM_LIMITE_ALERTA);
 
-  // Monta o JSON a ser enviado (incluindo o nível de som)
   String json = "{\"temperatura\":" + String(temperatura, 1) +
                 ",\"umidade\":" + String(umidade, 1) +
                 ",\"som\":" + String(nivelSom) + "}";
-  Serial.print("JSON enviado: ");
-  Serial.println(json);
 
-  // Envia para o backend (com tentativas, pois a Render pode estar "dormindo")
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.print("Enviando para: ");
-    Serial.println(API_URL);
-
-    bool enviado = false;
-    for (int tentativa = 1; tentativa <= 3 && !enviado; tentativa++) {
-      if (tentativa > 1) {
-        Serial.print("Tentativa ");
-        Serial.print(tentativa);
-        Serial.println(" de 3...");
-        delay(5000); // espera 5s entre tentativas
-      }
-
-      HTTPClient http;
-      http.setTimeout(60000); // Timeout de 60 segundos (Render pode demorar p/ acordar)
-      http.begin(API_URL);
-      http.addHeader("Content-Type", "application/json");
-      http.addHeader("x-api-key", API_KEY);
-
-      int httpCode = http.POST(json);
-      String resposta;
-
-      if (httpCode > 0) {
-        resposta = http.getString();
-        Serial.print("HTTP Status: ");
-        Serial.println(httpCode);
-        Serial.print("Resposta do servidor: ");
-        Serial.println(resposta);
-
-        if (httpCode == 200 || httpCode == 201) {
-          Serial.println(">> SUCESSO: leitura registrada no banco de dados!");
-          enviado = true;
-        } else if (httpCode == 401) {
-          Serial.println(">> ERRO: API_KEY incorreta! Confira o valor no codigo e na Render.");
-          enviado = true; // nao adianta tentar de novo
-        } else if (httpCode == 404) {
-          Serial.println(">> ERRO: URL nao encontrada. Confira API_URL.");
-          enviado = true;
-        } else if (httpCode == 500) {
-          Serial.println(">> ERRO interno no servidor. Veja os logs na Render.");
-        }
-      } else {
-        Serial.print("ERRO na conexao HTTP. Codigo: ");
-        Serial.println(httpCode);
-        switch (httpCode) {
-          case HTTPC_ERROR_CONNECTION_REFUSED:
-            Serial.println("Conexao recusada - servidor pode estar dormindo na Render. Tentando de novo...");
-            break;
-          case HTTPC_ERROR_CONNECTION_LOST:
-            Serial.println("Conexao perdida durante o envio.");
-            break;
-          case HTTPC_ERROR_READ_TIMEOUT:
-            Serial.println("Timeout de leitura (servidor demorou a responder).");
-            break;
-          case HTTPC_ERROR_NOT_CONNECTED:
-            Serial.println("Nao foi possivel conectar ao servidor (verifique SSL/URL e internet).");
-            break;
-          default:
-            Serial.println("Verifique a URL e a conexao com a internet.");
-            break;
-        }
-      }
-      http.end();
-    }
-  } else {
-    Serial.println("WiFi desconectado - reconexao sera feita pelo loop.");
-  }
-}
-
-// Consulta o estado do buzzer no servidor (ligado/desligado pelo botão do site)
-void consultarBuzzer() {
   if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi off - pulando envio");
     return;
   }
 
   HTTPClient http;
   http.setTimeout(15000);
+  http.begin(API_URL);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("x-api-key", API_KEY);
+
+  int httpCode = http.POST(json);
+  if (httpCode == 200 || httpCode == 201) {
+    Serial.println(">> Enviado com sucesso!");
+    ultTempEnviada = temperatura;
+    ultUmidEnviada = umidade;
+    ultSomEnviado = nivelSom;
+  } else if (httpCode > 0) {
+    Serial.printf(">> Erro HTTP %d\n", httpCode);
+  } else {
+    Serial.println(">> Falha na conexao");
+  }
+  http.end();
+}
+
+// Consulta buzzer no servidor
+void consultarBuzzer() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  HTTPClient http;
+  http.setTimeout(10000);
   http.begin(BUZZER_URL);
   http.addHeader("x-api-key", API_KEY);
 
   int httpCode = http.GET();
-
   if (httpCode == 200) {
-    String resposta = http.getString();
-    // Resposta esperada: {"ligado":true} ou {"ligado":false}
-    buzzerLigado = resposta.indexOf("\"ligado\":true") >= 0;
-    Serial.printf("Estado do buzzer no site: %s\n", buzzerLigado ? "LIGADO" : "desligado");
-  } else {
-    Serial.printf("Falha ao consultar buzzer. HTTP: %d\n", httpCode);
+    String resp = http.getString();
+    buzzerLigado = resp.indexOf("\"ligado\":true") >= 0;
+    Serial.printf("Buzzer: %s\n", buzzerLigado ? "LIGADO" : "desligado");
+  }
+  http.end();
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  Serial.println("\n=== MONITOR DE TEMPERATURA ===");
+  Serial.printf("Sensor: GPIO%d\n", DHTPIN);
+  Serial.println("VCC->3.3V  DATA->GPIO4  GND->GND");
+
+  dht.begin();
+
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Conectando WiFi");
+
+  // Espera WiFi com timeout curto (nao trava muito)
+  unsigned long inicioWifi = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - inicioWifi < 15000) {
+    delay(500);
+    Serial.print(".");
+    yield();
   }
 
-  http.end();
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("\nWiFi OK - IP: %s\n", WiFi.localIP().c_str());
+  } else {
+    Serial.println("\nWiFi falhou - tentara no loop");
+  }
+
+  timerInicio = millis();
+  Serial.println("=== Iniciando monitoramento ===");
+}
+
+void loop() {
+  unsigned long agora = millis();
+
+  // ---- WiFi: reconecta se caiu ----
+  if (WiFi.status() != WL_CONNECTED && (agora - timerWifi > INTERVALO_WIFI)) {
+    timerWifi = agora;
+    WiFi.disconnect();
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    Serial.print(".");
+  }
+
+  // Watchdog: reinicia se 10 min sem WiFi
+  if (WiFi.status() != WL_CONNECTED && (agora - timerInicio > 600000)) {
+    Serial.println(">> 10 min sem WiFi - reiniciando");
+    ESP.restart();
+  }
+
+  // ---- Som: a cada 1.5s ----
+  if (agora - timerSom >= INTERVALO_SOM) {
+    timerSom = agora;
+    int som = lerNivelSom();
+    if (abs(som - ultSomEnviado) >= VAR_SOM) {
+      Serial.printf("Som: %d -> %d\n", ultSomEnviado, som);
+      ultSomEnviado = som;
+      // Envia dados atualizados
+      enviarDados();
+    }
+  }
+
+  // ---- DHT: a cada 10s ----
+  if (agora - timerDHT >= INTERVALO_DHT) {
+    timerDHT = agora;
+    if (lerDHT()) {
+      float t = ultTempLida;
+      float u = ultUmidLida;
+      bool mudouT = fabs(t - ultTempEnviada) >= VAR_TEMP;
+      bool mudouU = fabs(u - ultUmidEnviada) >= VAR_UMID;
+      if (mudouT || mudouU) {
+        Serial.printf("DHT: %.1fC / %.1f%%\n", t, u);
+        enviarDados();
+      }
+    } else {
+      Serial.println(">> DHT: falha na leitura");
+    }
+  }
+
+  // ---- Keep-alive: a cada 30s ----
+  if (agora - timerKeepAlive >= INTERVALO_KEEPALIVE) {
+    timerKeepAlive = agora;
+    lerDHT(); // atualiza valores mesmo sem mudanca
+    enviarDados();
+  }
+
+  // ---- Buzzer: a cada 5s ----
+  if (agora - timerBuzzer >= INTERVALO_BUZZER) {
+    timerBuzzer = agora;
+    consultarBuzzer();
+  }
+
+  // ---- Controle do buzzer ----
+  if (buzzerLigado) {
+    ledcAttach(BUZZER_PIN, 3000, 8);
+    ledcWrite(BUZZER_PIN, 240);
+  } else {
+    ledcDetach(BUZZER_PIN);
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+
+  yield(); // alimenta o watchdog a cada volta do loop
+  delay(10); // muito curto - so pra nao gastar CPU a toa
 }

@@ -414,6 +414,7 @@ let historicoDados = null; // dados brutos carregados (usados p/ baixar gráfico
                 const umidades = ordenado.map(d => d.umidade);
                 const sons = ordenado.map(d => d.som !== undefined ? d.som : 0);
                 const limitesSom = ordenado.map(() => SOM_LIMITE_ALERTA);
+                const movimentos = ordenado.map(d => d.movimento === true ? 1 : 0);
 
                 if (chart) {
                     chart.destroy();
@@ -466,6 +467,18 @@ let historicoDados = null; // dados brutos carregados (usados p/ baixar gráfico
                                 pointRadius: 0,
                                 borderWidth: 1,
                                 yAxisID: 'ySom'
+                            },
+                            {
+                                label: 'Movimento',
+                                data: movimentos,
+                                type: 'line',
+                                stepped: 'before',
+                                borderColor: '#ff9800',
+                                backgroundColor: 'rgba(255,152,0,0.2)',
+                                fill: true,
+                                pointRadius: 0,
+                                borderWidth: 2,
+                                yAxisID: 'yMov'
                             }
                         ]
                     },
@@ -528,6 +541,14 @@ let historicoDados = null; // dados brutos carregados (usados p/ baixar gráfico
                                 title: { display: true, text: 'Som', color: '#ffce56', font: { size: ehMobile ? 9 : 11 } },
                                 ticks: { color: '#ffce56', font: { size: ehMobile ? 9 : 11 } },
                                 grid: { drawOnChartArea: false }
+                            },
+                            yMov: {
+                                type: 'linear',
+                                position: 'right',
+                                min: 0,
+                                max: 1,
+                                display: false,
+                                grid: { drawOnChartArea: false }
                             }
                         }
                     }
@@ -553,6 +574,7 @@ let historicoDados = null; // dados brutos carregados (usados p/ baixar gráfico
                     const umidades = dadosCompletos.map(d => d.umidade);
                     const sons = dadosCompletos.map(d => d.som !== undefined ? d.som : 0);
                     const limitesSom = dadosCompletos.map(() => SOM_LIMITE_ALERTA);
+                    const movimentos = dadosCompletos.map(d => d.movimento === true ? 1 : 0);
 
                     // Cria um gráfico temporário grande, off-screen, com TODOS os pontos
                     const tmpCanvas = document.createElement('canvas');
@@ -573,7 +595,8 @@ let historicoDados = null; // dados brutos carregados (usados p/ baixar gráfico
                                 { label: 'Temperatura (°C)', data: temperaturas, borderColor: '#ff6384', backgroundColor: 'rgba(255,99,132,0.1)', yAxisID: 'yTemp', tension: 0.3, pointRadius: 1 },
                                 { label: 'Umidade (%)', data: umidades, borderColor: '#36a2eb', backgroundColor: 'rgba(54,162,235,0.1)', yAxisID: 'yUmid', tension: 0.3, pointRadius: 1 },
                                 { label: 'Som', data: sons, borderColor: '#ffce56', backgroundColor: 'rgba(255,206,86,0.15)', yAxisID: 'ySom', tension: 0.3, pointRadius: 1 },
-                                { label: 'Limite som', data: limitesSom, borderColor: 'rgba(255,206,86,0.4)', borderDash: [5, 5], pointRadius: 0, borderWidth: 1, yAxisID: 'ySom' }
+                                { label: 'Limite som', data: limitesSom, borderColor: 'rgba(255,206,86,0.4)', borderDash: [5, 5], pointRadius: 0, borderWidth: 1, yAxisID: 'ySom' },
+                                { label: 'Movimento', data: movimentos, type: 'line', stepped: 'before', borderColor: '#ff9800', backgroundColor: 'rgba(255,152,0,0.2)', fill: true, pointRadius: 0, borderWidth: 2, yAxisID: 'yMov' }
                             ]
                         },
                         options: {
@@ -587,7 +610,8 @@ let historicoDados = null; // dados brutos carregados (usados p/ baixar gráfico
                                 x: { ticks: { font: { size: 14 }, maxTicksLimit: 12 }, grid: { color: 'rgba(0,0,0,0.05)' } },
                                 yTemp: { type: 'linear', position: 'left', title: { display: true, text: '°C', color: '#ff6384' }, ticks: { color: '#ff6384' } },
                                 yUmid: { type: 'linear', position: 'right', min: 0, max: 100, title: { display: true, text: '%', color: '#36a2eb' }, ticks: { color: '#36a2eb' }, grid: { drawOnChartArea: false } },
-                                ySom: { type: 'linear', position: 'right', title: { display: true, text: 'Som', color: '#ffce56' }, ticks: { color: '#ffce56' }, grid: { drawOnChartArea: false } }
+                                ySom: { type: 'linear', position: 'right', title: { display: true, text: 'Som', color: '#ffce56' }, ticks: { color: '#ffce56' }, grid: { drawOnChartArea: false } },
+                                yMov: { type: 'linear', position: 'right', min: 0, max: 1, display: false, grid: { drawOnChartArea: false } }
                             }
                         }
                     });
